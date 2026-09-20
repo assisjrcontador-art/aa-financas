@@ -509,262 +509,156 @@ renderAll();
 </style>
 
 
-<style>
-.demo-switch{position:fixed;right:14px;bottom:82px;z-index:60;display:flex;gap:7px;align-items:center;background:#101c25;border:1px solid rgba(82,216,232,.25);box-shadow:0 12px 35px rgba(0,0,0,.35);padding:8px 10px;border-radius:16px}
-.demo-switch button{border:0;border-radius:10px;padding:9px 11px;font-weight:900;background:#1b2b36;color:#dce9ee}
-.demo-switch button.on{background:#52d8e8;color:#061016}
-.demo-banner{margin:10px 0 14px;padding:11px 14px;border:1px solid rgba(82,216,232,.24);background:rgba(82,216,232,.07);border-radius:13px;font-size:12px;color:#bcd1d9}
-.consultor-fab{position:fixed;right:14px;bottom:22px;z-index:61;border:0;border-radius:16px;padding:13px 16px;font-weight:900;background:linear-gradient(135deg,#31d69b,#52d8e8);color:#061016;box-shadow:0 14px 35px rgba(0,0,0,.4)}
-.ai-demo{display:grid;gap:12px}.ai-box{padding:14px;border-radius:14px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07)}
-.ai-q{display:flex;gap:7px;flex-wrap:wrap}.ai-q button{font-size:12px}
-@media(max-width:720px){.demo-switch{bottom:80px;right:10px}.consultor-fab{bottom:20px;right:10px}}
-</style>
-<script>
-/* ===== A&A v11 — Modo Visitante + Consultor IA (demo seguro) ===== */
-let aaVisitor=false;
-const _fmtReal=fmt;
-const _renderAllReal=renderAll;
-
-const VISITOR={
-  Assis:{fixed:2,extra:1,total:3},
-  Andressa:{fixed:2,extra:1,total:3},
-  Casal:{fixed:4,extra:2,total:6}
-};
-function visitorScopeKey(){return aaScope==='Casal'?'Casal':aaScope}
-function visitorMoney(v){return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v)}
-function maskTextV11(root=document){
-  if(!aaVisitor)return;
-  const replacements=[
-    ['Canyon Salário','Salário principal'],['Canyon Benefícios','Benefícios'],
-    ['Bônus Canyon','Renda extra'],['Ferreira Imóveis','Projeto pessoal'],
-    ['Instituto Salário','Salário principal'],['SUS','Renda complementar'],['Projeto','Projeto pessoal'],
-    ['Apto','Moradia'],['apto','Moradia'],['Apartamento','Moradia']
-  ];
-  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
-  let n; while(n=walker.nextNode()){
-    if(n.parentElement && ['SCRIPT','STYLE'].includes(n.parentElement.tagName))continue;
-    replacements.forEach(([a,b])=>{if(n.nodeValue.includes(a))n.nodeValue=n.nodeValue.split(a).join(b)});
-  }
-}
-function visitorBannerV11(){
-  document.querySelectorAll('.demo-banner').forEach(x=>x.remove());
-  if(!aaVisitor)return;
-  const active=document.querySelector('section.active,.page.active,main')||document.body;
-  const b=document.createElement('div'); b.className='demo-banner';
-  b.innerHTML='<b>Modo Visitante ativo</b> · demonstração com nomes e valores genéricos. Seus dados pessoais continuam preservados no aparelho.';
-  active.prepend(b);
-}
-function renderVisitorOverlayV11(){
-  if(!aaVisitor)return;
-  const r=VISITOR[visitorScopeKey()]||VISITOR.Casal;
-  const cards=[...document.querySelectorAll('.income-v10 .kpi strong')];
-  if(cards[0])cards[0].textContent=visitorMoney(r.fixed);
-  if(cards[1])cards[1].textContent=visitorMoney(r.extra);
-  if(cards[2])cards[2].textContent=visitorMoney(r.total);
-
-  // Mascara todos os valores monetários visíveis sem alterar o banco.
-  document.querySelectorAll('strong,.big,b,.pat-month,td,.amount').forEach((el,i)=>{
-    if(/R\$\s?[\d.]+,\d{2}/.test(el.textContent||'')){
-      const vals=[1,2,3,4,5,6,8,10];
-      el.innerHTML=el.innerHTML.replace(/R\$\s?[\d.]+,\d{2}/g,()=>visitorMoney(vals[i%vals.length]));
-    }
-  });
-  maskTextV11();
-  visitorBannerV11();
-}
-function renderAll(){
-  _renderAllReal();
-  if(aaVisitor)setTimeout(renderVisitorOverlayV11,0);
-}
-function toggleVisitorV11(){
-  aaVisitor=!aaVisitor;
-  document.getElementById('visitorBtn').classList.toggle('on',aaVisitor);
-  document.getElementById('visitorBtn').textContent=aaVisitor?'Visitante ✓':'Modo visitante';
-  renderAll();
-}
-function consultorV11(){
-  const scope=aaVisitor?'casal demonstrativo':(aaScope==='Casal'?'casal':aaScope);
-  modal(`<div class="mh"><div><span class="tag">✦ CONSULTOR IA</span><h2>Consultor A&A</h2><div class="mut">${aaVisitor?'Demonstração segura para visitantes':'Módulo preparado para integração com IA'}</div></div><button class="btn" onclick="closeM()">×</button></div>
-  <div class="ai-demo">
-    <div class="ai-box"><b>Análise de ${scope}</b><p class="mut">${aaVisitor?'O orçamento demonstrativo está equilibrado. A recomendação é acompanhar gastos variáveis, manter uma parcela da renda destinada à reserva e revisar o realizado antes do fechamento do mês.':'O Consultor já está na interface. Para respostas reais e personalizadas, a próxima etapa é conectar o app a um backend seguro e à API da IA; nenhuma chave será colocada neste index público.'}</p></div>
-    <div class="ai-q"><button class="btn soft" onclick="aiDemoAnswerV11('mes')">Analisar meu mês</button><button class="btn soft" onclick="aiDemoAnswerV11('cortes')">Onde posso melhorar?</button><button class="btn soft" onclick="aiDemoAnswerV11('orcamento')">Sugerir orçamento</button></div>
-    <label><b>Pergunte ao consultor</b><input id="aiAskV11" placeholder="Ex.: Como posso melhorar meu orçamento?"></label>
-    <button class="btn primary" onclick="aiDemoAnswerV11('pergunta')">Perguntar</button>
-    <div id="aiAnswerV11" class="ai-box mut">As respostas desta versão são demonstrativas. O módulo não envia seus dados para serviços externos.</div>
-  </div>`);
-}
-function aiDemoAnswerV11(kind){
-  const q=document.getElementById('aiAskV11')?.value||'';
-  const answers={
-    mes:'Seu mês deve ser acompanhado por três pontos: receitas, obrigações e gastos variáveis. O ideal é comparar orçamento e realizado antes de aumentar o Saldo Livre.',
-    cortes:'Priorize revisar categorias variáveis que ultrapassaram o orçamento. Evite reduzir reservas automaticamente para compensar consumo acima do planejado.',
-    orcamento:'Uma boa proposta começa pelas obrigações, define a meta de reserva e distribui o restante entre consumo e Saldo Livre. A versão conectada à IA fará isso usando seus números reais.',
-    pergunta:q?`Pergunta registrada: “${q}”. Na versão conectada, o Consultor responderá usando orçamento, realizado, cartões e patrimônio do A&A.`:'Digite uma pergunta para o Consultor.'
-  };
-  const el=document.getElementById('aiAnswerV11'); if(el)el.textContent=answers[kind];
-}
-function installV11Controls(){
-  if(document.getElementById('visitorBtn'))return;
-  const box=document.createElement('div'); box.className='demo-switch';
-  box.innerHTML='<button id="visitorBtn" onclick="toggleVisitorV11()">Modo visitante</button>';
-  document.body.appendChild(box);
-  const ai=document.createElement('button'); ai.className='consultor-fab'; ai.textContent='✦ Consultor IA'; ai.onclick=consultorV11;
-  document.body.appendChild(ai);
-}
-document.addEventListener('DOMContentLoaded',installV11Controls);
-if(document.readyState!=='loading')installV11Controls();
-document.title='A&A Finanças · v11';
-</script>
-
 
 <style>
-/* ===== A&A v12 ===== */
-.finance-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
-.finance-panel{padding:18px}.finance-panel h2{margin:0 0 5px}
-.finance-progress{height:11px;background:#172731;border-radius:99px;overflow:hidden;margin:12px 0}.finance-progress i{display:block;height:100%;background:linear-gradient(90deg,#31d69b,#52d8e8)}
-.finance-chart{height:260px;display:flex;align-items:flex-end;gap:10px;padding:25px 10px 0;overflow-x:auto}
-.finance-col{min-width:68px;flex:1;text-align:center}.finance-bar{height:205px;display:flex;flex-direction:column;justify-content:flex-end}.finance-bar .future{background:rgba(82,216,232,.26);border-radius:7px 7px 0 0}.finance-bar .solid{background:linear-gradient(180deg,#31d69b,#15956e);border-radius:7px 7px 2px 2px}.finance-col small{display:block;margin-top:7px;color:#8497a3;font-size:10px}
-.notice-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:14px}.notice{padding:17px;border-left:3px solid #31d69b}.notice.warn{border-left-color:#f2b84b}.notice.info{border-left-color:#52d8e8}
-.ai-chat{padding:20px}.ai-chat textarea{width:100%;min-height:90px;background:#09141c;color:#edf5f7;border:1px solid #263946;border-radius:12px;padding:12px;resize:vertical}
-.visitor-lock .view .btn,.visitor-lock .view .cat,.visitor-lock .view .income-row,.visitor-lock .view input,.visitor-lock .view select{pointer-events:none;opacity:.75}
-.visitor-note{padding:12px 15px;margin-bottom:14px;border-radius:13px;background:rgba(82,216,232,.08);border:1px solid rgba(82,216,232,.22);color:#bcd1d9}
-.aa-stack-chart{padding:20px;margin:16px 0}.aa-stack-wrap{height:285px;display:flex;align-items:flex-end;gap:12px;overflow-x:auto;padding:20px 8px 0}.aa-stack-col{min-width:76px;flex:1;text-align:center}.aa-stack-bar{height:215px;display:flex;flex-direction:column;justify-content:flex-end}.aa-stack-aporte{background:rgba(82,216,232,.28);border:1px solid rgba(82,216,232,.35);border-bottom:0;border-radius:8px 8px 0 0}.aa-stack-solid{background:linear-gradient(180deg,#31d69b,#178b69);border-radius:8px 8px 3px 3px}.aa-stack-col small{display:block;color:#8497a3;margin-top:7px}.aa-stack-col b{font-size:11px;display:block;margin-top:3px}
-@media(max-width:900px){.finance-grid{grid-template-columns:repeat(2,1fr)}.notice-grid{grid-template-columns:1fr}}
-@media(max-width:720px){.finance-grid{display:flex;overflow-x:auto}.finance-grid .kpi{min-width:72vw}.aa-stack-col{min-width:68px}}
+/* ===== A&A v13 — revisão limpa ===== */
+.eye-privacy{position:absolute;right:18px;top:18px;z-index:50;width:42px;height:42px;border-radius:13px;border:1px solid rgba(82,216,232,.22);background:#11212b;color:#dcebef;font-size:20px;display:grid;place-items:center;box-shadow:0 8px 24px rgba(0,0,0,.22)}
+.eye-privacy:active{transform:scale(.97)}
+.finance-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:15px}
+.finance-card{padding:17px}.finance-card h2{margin:0 0 6px}
+.progress-v13{height:10px;border-radius:99px;overflow:hidden;background:#142630;margin:12px 0}.progress-v13 i{display:block;height:100%;background:linear-gradient(90deg,#31d69b,#52d8e8)}
+.notice-layout{display:grid;grid-template-columns:1.05fr .95fr;gap:14px}.notice-v13{padding:16px;border-left:3px solid #52d8e8;margin-bottom:10px}.notice-v13.warn{border-left-color:#f0b54a}
+.chat-v13{padding:18px}.chat-v13 textarea{width:100%;min-height:92px;border:1px solid #263b47;border-radius:13px;background:#09151d;color:#eef6f8;padding:12px;resize:vertical}
+.stack-card{padding:20px;margin:15px 0}.stack-bars{height:290px;display:flex;align-items:flex-end;gap:12px;overflow-x:auto;padding:18px 8px 0}.stack-col{min-width:76px;flex:1;text-align:center}.stack-bar{height:215px;display:flex;flex-direction:column;justify-content:flex-end}.stack-future{background:rgba(82,216,232,.26);border:1px solid rgba(82,216,232,.35);border-bottom:0;border-radius:8px 8px 0 0}.stack-solid{background:linear-gradient(180deg,#31d69b,#168a68);border-radius:8px 8px 3px 3px}.stack-col small{display:block;margin-top:7px;color:#879ba6}.stack-col b{display:block;font-size:11px;margin-top:3px}
+body.privacy-v13 .money-mask{filter:none!important}
+.privacy-placeholder{letter-spacing:2px}
+@media(max-width:900px){.finance-grid{grid-template-columns:repeat(2,1fr)}.notice-layout{grid-template-columns:1fr}}
+@media(max-width:650px){.finance-grid{display:flex;overflow-x:auto}.finance-grid>.card{min-width:74vw}.eye-privacy{right:12px;top:12px}}
 </style>
 <script>
-/* ===== A&A v12 — Visitante real, Financiamento, Avisos IA e gráfico em colunas ===== */
-
-const FINANCE_V12={
-  generated:'20/09/2026', term:360, remaining:317, paidCount:43,
-  nominalAnnual:4.25, relationshipAnnual:4.25, system:'TP',
-  balance:116925.00, monthInterestCorrection:414.81, monthAmortization:200.91,
-  indexer:'POUPANÇA/FGTS NO SFH', nextDue:'03/10/2026', nextPayment:646.47,
-  recent:[
-    ['03/09/2026',43,645.40],['03/08/2026',42,644.25],['03/07/2026',41,643.24],
-    ['03/06/2026',40,640.31],['04/05/2026',39,639.25],['06/04/2026',38,638.11],
-    ['03/03/2026',37,637.11],['03/02/2026',36,636.35],['05/01/2026',35,635.28],
-    ['03/12/2025',34,634.12],['03/11/2025',33,633.18],['03/10/2025',32,632.09]
-  ]
+/* ===== A&A v13 — sem modo visitante, sem botões flutuantes ===== */
+let privacyV13=false;
+const FIN_V13={
+ generated:'20/09/2026',term:360,remaining:317,paid:43,rate:4.25,balance:116925.00,
+ indexer:'POUPANÇA/FGTS NO SFH',system:'TP',nextDue:'03/10/2026',nextValue:646.47,
+ insurance:30.75,
+ recent:[
+ ['03/09/2026',43,645.40],['03/08/2026',42,644.25],['03/07/2026',41,643.24],
+ ['03/06/2026',40,640.31],['04/05/2026',39,639.25],['06/04/2026',38,638.11],
+ ['03/03/2026',37,637.11],['03/02/2026',36,636.35],['05/01/2026',35,635.28],
+ ['03/12/2025',34,634.12],['03/11/2025',33,633.18],['03/10/2025',32,632.09]]
 };
-
-function ensureV12(){
-  db.financing=db.financing||JSON.parse(JSON.stringify(FINANCE_V12));
-  db.aiNotices=db.aiNotices||[];
-  db.aiChat=db.aiChat||[];
-  db.aiLastAuto=db.aiLastAuto||'';
+function ensureV13(){
+ db.financing=db.financing||JSON.parse(JSON.stringify(FIN_V13));
+ db.aiNotices=db.aiNotices||[]; db.aiLastAuto=db.aiLastAuto||'';
 }
-function financeProjectionV12(){
-  const f=db.financing||FINANCE_V12, out=[];
-  let bal=+f.balance||0;
-  const r=(+f.nominalAnnual||0)/100/12;
-  const amort=Math.max(0,+f.monthAmortization||0);
-  const start=new Date(2026,9,3);
-  for(let i=0;i<Math.min(+f.remaining||0,360);i++){
-    let interest=bal*r, payment=Math.min(bal+interest,amort+interest);
-    bal=Math.max(0,bal-amort);
-    let d=new Date(start.getFullYear(),start.getMonth()+i,3);
-    out.push({n:(+f.paidCount||0)+i+1,date:d.toLocaleDateString('pt-BR'),payment,interest,amort:Math.min(amort,bal+amort),balance:bal});
-    if(bal<=0)break;
-  }
-  return out;
+function installEyeV13(){
+ document.querySelectorAll('.demo-switch,.consultor-fab').forEach(x=>x.remove());
+ let old=document.getElementById('privacyEyeV13'); if(old)old.remove();
+ let b=document.createElement('button'); b.id='privacyEyeV13'; b.className='eye-privacy';
+ b.title=privacyV13?'Mostrar valores':'Ocultar valores';
+ b.innerHTML=privacyV13?'◉':'◉'; b.setAttribute('aria-label',b.title);
+ b.onclick=()=>{privacyV13=!privacyV13;renderAll()};
+ document.body.appendChild(b);
+}
+function maskValuesV13(){
+ if(!privacyV13)return;
+ const rx=/R\$\s*[-+]?\s*[\d.]+,\d{2}/g;
+ const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
+ let n,arr=[]; while(n=walker.nextNode())arr.push(n);
+ arr.forEach(t=>{
+   if(t.parentElement && ['SCRIPT','STYLE','TEXTAREA','INPUT'].includes(t.parentElement.tagName))return;
+   if(rx.test(t.nodeValue)){rx.lastIndex=0;t.nodeValue=t.nodeValue.replace(rx,'R$ ----');}
+ });
+ // Hide graph numeric labels that may be rendered without currency.
+ document.querySelectorAll('.pat-total strong,.stack-col b,.kpi strong').forEach(el=>{
+   if(/[0-9]/.test(el.textContent))el.textContent='----';
+ });
+}
+function financeProjectionV13(){
+ const f=db.financing||FIN_V13,n=+f.remaining||317,r=(+f.rate||4.25)/100/12;
+ let bal=+f.balance||0; const basePayment=r?bal*r/(1-Math.pow(1+r,-n)):bal/n;
+ const rows=[], start=new Date(2026,9,3);
+ for(let i=0;i<n;i++){
+   const interest=bal*r, amort=Math.min(bal,basePayment-interest), installment=amort+interest+(+f.insurance||0);
+   bal=Math.max(0,bal-amort);
+   const d=new Date(start.getFullYear(),start.getMonth()+i,3);
+   rows.push({n:(+f.paid||43)+i+1,date:d.toLocaleDateString('pt-BR'),installment,interest,amort,balance:bal});
+ }
+ return rows;
 }
 function renderFinancing(){
-  const f=db.financing||FINANCE_V12,p=financeProjectionV12(),pct=(f.paidCount/f.term*100);
-  const futureTotal=p.reduce((s,x)=>s+x.payment,0), futureInterest=p.reduce((s,x)=>s+x.interest,0);
-  $('#financing').innerHTML=`<div class="finance-grid">
-    <div class="card kpi"><label>Saldo devedor</label><strong>${fmt(f.balance)}</strong><span class="mut">posição de ${f.generated}</span></div>
-    <div class="card kpi"><label>Parcelas pagas</label><strong>${f.paidCount} / ${f.term}</strong><span class="mut">${pct.toFixed(1).replace('.',',')}% do prazo</span></div>
-    <div class="card kpi"><label>Prazo remanescente</label><strong>${f.remaining} meses</strong><span class="mut">taxa nominal ${String(f.nominalAnnual).replace('.',',')}% a.a.</span></div>
-    <div class="card kpi"><label>Próxima prestação</label><strong>${fmt(f.nextPayment)}</strong><span class="mut">vencimento ${f.nextDue}</span></div>
-  </div>
-  <div class="grid2">
-   <div class="card finance-panel"><h2>Evolução do contrato</h2><div class="mut">43 prestações transcorridas de 360.</div><div class="finance-progress"><i style="width:${pct}%"></i></div>
-    <div class="tablewrap"><table><thead><tr><th>Parcela</th><th>Pagamento</th><th class="money">Pago</th></tr></thead><tbody>${f.recent.map(x=>`<tr><td>${x[1]}</td><td>${x[0]}</td><td class="money">${fmt(x[2])}</td></tr>`).join('')}</tbody></table></div>
-    <div class="mut" style="margin-top:10px">O demonstrativo importado detalha as últimas prestações; as anteriores permanecem contabilizadas no progresso do contrato.</div>
-   </div>
-   <div class="card finance-panel"><h2>Contrato e projeção</h2>
-    <div class="income-row"><span>Sistema</span><b>${f.system}</b></div><div class="income-row"><span>Indexador</span><b>${f.indexer}</b></div>
-    <div class="income-row"><span>Amortização informada no mês</span><b>${fmt(f.monthAmortization)}</b></div><div class="income-row"><span>Juros/correção informados no mês</span><b>${fmt(f.monthInterestCorrection)}</b></div>
-    <div class="income-row"><span>Fluxo futuro estimado*</span><b>${fmt(futureTotal)}</b></div><div class="income-row"><span>Juros nominais estimados*</span><b>${fmt(futureInterest)}</b></div>
-    <p class="mut">*Simulação gerencial. O contrato é indexado e o valor real das parcelas futuras pode variar; esta projeção não substitui o demonstrativo da instituição financeira.</p>
-   </div>
-  </div>
-  <div class="card section" style="margin-top:16px"><div class="toolbar"><div><h2>Parcelas futuras</h2><div class="mut">Projeção mensal do saldo, amortização e juros nominais.</div></div></div>
-   <div class="tablewrap"><table><thead><tr><th>Nº</th><th>Data</th><th class="money">Parcela estimada</th><th class="money">Amortização</th><th class="money">Juros</th><th class="money">Saldo projetado</th></tr></thead>
-   <tbody>${p.map(x=>`<tr><td>${x.n}</td><td>${x.date}</td><td class="money">${fmt(x.payment)}</td><td class="money">${fmt(x.amort)}</td><td class="money">${fmt(x.interest)}</td><td class="money">${fmt(x.balance)}</td></tr>`).join('')}</tbody></table></div>
-  </div>`;
+ const f=db.financing||FIN_V13,p=financeProjectionV13(),pct=(f.paid/f.term)*100;
+ const future=p.reduce((a,x)=>a+x.installment,0),interest=p.reduce((a,x)=>a+x.interest,0);
+ $('#financing').innerHTML=`<div class="finance-grid">
+ <div class="card kpi"><label>Saldo devedor</label><strong>${fmt(f.balance)}</strong><span class="mut">posição ${f.generated}</span></div>
+ <div class="card kpi"><label>Parcelas transcorridas</label><strong>${f.paid} / ${f.term}</strong><span class="mut">${pct.toFixed(1).replace('.',',')}% do prazo</span></div>
+ <div class="card kpi"><label>Prazo remanescente</label><strong>${f.remaining} meses</strong><span class="mut">taxa nominal ${String(f.rate).replace('.',',')}% a.a.</span></div>
+ <div class="card kpi"><label>Próxima prestação</label><strong>${fmt(f.nextValue)}</strong><span class="mut">${f.nextDue}</span></div></div>
+ <div class="grid2"><div class="card finance-card"><h2>Contrato habitacional</h2>
+ <div class="income-row"><span>Sistema</span><b>${f.system}</b></div><div class="income-row"><span>Indexador</span><b>${f.indexer}</b></div>
+ <div class="progress-v13"><i style="width:${pct}%"></i></div>
+ <div class="mut">O contrato possui indexador variável. Por isso, o futuro abaixo é uma simulação gerencial, e não uma reprodução das parcelas oficiais da CAIXA.</div></div>
+ <div class="card finance-card"><h2>Visão futura estimada</h2>
+ <div class="income-row"><span>Fluxo das ${f.remaining} parcelas</span><b>${fmt(future)}</b></div>
+ <div class="income-row"><span>Juros nominais estimados</span><b>${fmt(interest)}</b></div>
+ <div class="income-row"><span>Último seguro informado</span><b>${fmt(f.insurance)}</b></div>
+ <div class="mut">A projeção usa o saldo atual, o prazo remanescente e a taxa nominal contratual; correções futuras do indexador não são conhecidas antecipadamente.</div></div></div>
+ <div class="card section" style="margin-top:15px"><h2>Histórico disponível no demonstrativo</h2><div class="tablewrap"><table><thead><tr><th>Parcela</th><th>Pagamento</th><th class="money">Pago</th></tr></thead><tbody>${f.recent.map(x=>`<tr><td>${x[1]}</td><td>${x[0]}</td><td class="money">${fmt(x[2])}</td></tr>`).join('')}</tbody></table></div></div>
+ <div class="card section" style="margin-top:15px"><h2>Projeção das parcelas futuras</h2><div class="tablewrap"><table><thead><tr><th>Nº</th><th>Data</th><th class="money">Parcela estimada</th><th class="money">Amortização</th><th class="money">Juros</th><th class="money">Saldo</th></tr></thead><tbody>${p.map(x=>`<tr><td>${x.n}</td><td>${x.date}</td><td class="money">${fmt(x.installment)}</td><td class="money">${fmt(x.amort)}</td><td class="money">${fmt(x.interest)}</td><td class="money">${fmt(x.balance)}</td></tr>`).join('')}</tbody></table></div></div>`;
 }
-
-function generateDailyNoticeV12(){
-  const today=new Date().toISOString().slice(0,10);
-  if(db.aiLastAuto===today)return;
-  const m=mk(), expenses=budgetRows(m,'expense'), over=expenses.filter(x=>actual(x.category,'despesa')>+x.budget&&+x.budget>0);
-  let title='Revisão financeira do dia', text='Seu planejamento está disponível. Antes de aumentar gastos livres, confira obrigações, cartões e a meta de reserva do mês.',level='info';
-  if(over.length){title='Atenção ao orçamento';text=`${over.length} categoria(s) estão acima do valor planejado neste mês. Vale revisar os gastos variáveis antes de usar o Saldo Livre.`;level='warn'}
-  db.aiNotices.unshift({date:today,title,text,level});
-  db.aiNotices=db.aiNotices.slice(0,30); db.aiLastAuto=today; persist();
+function dailyNoticeV13(){
+ const today=new Date().toISOString().slice(0,10); if(db.aiLastAuto===today)return;
+ let title='Resumo financeiro do dia',text='Confira o realizado do mês antes de assumir novos gastos. O consultor acompanhará orçamento, cartões, reservas e financiamento.',level='info';
+ try{
+   const rows=budgetRows(mk(),'expense')||[];
+   const over=rows.filter(x=>(actual(x.category,'despesa')||0)>(+x.budget||0)&&(+x.budget||0)>0);
+   if(over.length){title='Orçamento pede atenção';text=`Há ${over.length} categoria(s) acima do planejado neste mês. Revise os gastos variáveis antes de aumentar o Saldo Livre.`;level='warn'}
+ }catch(e){}
+ db.aiNotices.unshift({date:today,title,text,level});db.aiNotices=db.aiNotices.slice(0,30);db.aiLastAuto=today;persist();
 }
 function renderAlerts(){
-  generateDailyNoticeV12();
-  $('#alerts').innerHTML=`<div class="notice-grid"><div>
-   ${(db.aiNotices||[]).map(n=>`<div class="card notice ${n.level||'info'}" style="margin-bottom:10px"><span class="tag">${n.date.split('-').reverse().join('/')}</span><h2>${esc(n.title)}</h2><div class="mut">${esc(n.text)}</div></div>`).join('')||'<div class="card section">Nenhum aviso ainda.</div>'}
-  </div><div class="card ai-chat"><span class="tag">✦ CONSULTOR IA</span><h2>Tire uma dúvida</h2><p class="mut">Espaço de conversa do consultor financeiro. Nesta versão local, as respostas são demonstrativas; a conexão segura com a IA virá pelo backend.</p>
-   <textarea id="aiChatAsk" placeholder="Ex.: Posso aumentar meu aporte este mês?"></textarea><button class="btn primary" style="margin-top:10px" onclick="askAdvisorV12()">Perguntar ao consultor</button><div id="aiChatAnswer" class="ai-box mut" style="margin-top:12px">O consultor também gera no máximo um aviso proativo por dia.</div>
-  </div></div>`;
+ dailyNoticeV13();
+ $('#alerts').innerHTML=`<div class="notice-layout"><div>${(db.aiNotices||[]).map(n=>`<div class="card notice-v13 ${n.level||''}"><span class="tag">${n.date.split('-').reverse().join('/')}</span><h2>${esc(n.title)}</h2><div class="mut">${esc(n.text)}</div></div>`).join('')}</div>
+ <div class="card chat-v13"><span class="tag">✦ CONSULTOR FINANCEIRO IA</span><h2>Converse com o consultor</h2><p class="mut">Além de um aviso proativo por dia, este será o espaço para dúvidas financeiras.</p>
+ <textarea id="advisorAskV13" placeholder="Ex.: Onde posso economizar este mês?"></textarea><button class="btn primary" style="margin-top:10px" onclick="advisorAskV13()">Perguntar</button>
+ <div id="advisorAnswerV13" class="ai-box mut" style="margin-top:12px">A interface está pronta. A resposta inteligente real será ligada por backend seguro, sem expor chave de API no aplicativo.</div></div></div>`;
 }
-function askAdvisorV12(){
-  const q=$('#aiChatAsk')?.value.trim(); if(!q)return;
-  $('#aiChatAnswer').textContent='Pergunta registrada. Quando o backend da IA estiver conectado, o consultor usará orçamento, realizado, cartões, patrimônio e financiamento para responder com contexto, sem expor sua chave no aplicativo.';
+function advisorAskV13(){
+ const q=$('#advisorAskV13')?.value.trim();if(!q)return;
+ $('#advisorAnswerV13').textContent='Pergunta registrada. O chat está visualmente pronto; a próxima etapa é conectar o backend da IA para analisar seus dados com segurança.';
 }
-
-/* Visitante passa a ser um perfil real de demonstração, sem renderizar o banco pessoal. */
-function demoDBV12(){
-  let d=JSON.parse(JSON.stringify(db));
-  d.incomeProfile={Assis:{Fixo:[{category:'Salário principal',budget:2}],Extra:[{category:'Renda extra',budget:1}]},Andressa:{Fixo:[{category:'Salário principal',budget:2}],Extra:[{category:'Renda extra',budget:1}]}};
-  Object.keys(d.budget||{}).forEach(k=>{
-    (d.budget[k].income||[]).forEach((x,i)=>{x.category=i%2?'Renda extra':'Salário principal';x.budget=i%2?1:2;x.owner=i%2?'Andressa':'Assis'});
-    (d.budget[k].expense||[]).forEach((x,i)=>{x.category=['Moradia','Alimentação','Transporte','Lazer','Reserva'][i%5];x.budget=1;x.owner=i%2?'Andressa':'Assis'});
-  });
-  d.actuals=(d.actuals||[]).map((x,i)=>({...x,category:x.type==='receita'?'Receita genérica':['Moradia','Alimentação','Transporte','Lazer'][i%4],amount:1}));
-  d.cards=[{id:'demo1',owner:'Assis',title:'Compra demonstrativa',amount:1,total:1,current:1,month:mk()},{id:'demo2',owner:'Andressa',title:'Serviço demonstrativo',amount:1,total:1,current:1,month:mk()}];
-  d.reserves=[{id:'aa',name:'Reserva principal',owner:'Casal',value:2,initial:2,rate:.78,purpose:'Objetivo demonstrativo',goal:10},{id:'car',name:'Objetivo específico',owner:'Casal',value:1,initial:1,rate:0,purpose:'Meta demonstrativa',goal:5}];
-  d.ferreira=[{type:'Receita',description:'Receita demonstrativa',budget:2,amount:2},{type:'Despesa',description:'Despesa demonstrativa',budget:1,amount:1}];
-  d.financing={...FINANCE_V12,balance:2,nextPayment:1,monthInterestCorrection:.01,monthAmortization:.01,recent:[['03/09/2026',43,1]],remaining:317};
-  d.aiNotices=[{date:new Date().toISOString().slice(0,10),title:'Demonstração do Consultor',text:'Este é um aviso genérico do modo visitante. Nenhum dado financeiro pessoal está sendo exibido.',level:'info'}];
-  d.aiLastAuto=new Date().toISOString().slice(0,10);
-  return d;
-}
-const _setAAScopeV12=setAAScope;
-setAAScope=function(v){aaScope=v;renderAll()}
-scopeHTML=function(){return `<div class="scopebar">${['Assis','Andressa','Casal','Visitante'].map(v=>`<button class="chip ${aaScope===v?'active':''}" onclick="setAAScope('${v}')">${v==='Casal'?'Casal / Consolidado':v}</button>`).join('')}</div>`}
-
-/* Patrimônio: colunas empilhadas. Sólido = saldo acumulado + rendimento; claro = aporte previsto do mês. */
-function aaProjectionHTML(){
-  const p=aaProjectionV10(), max=Math.max(...p.rows.map(r=>r.total),1);
-  return `<div class="card aa-stack-chart"><div class="pat-head"><div><span class="tag">A&A · ${p.rate.toFixed(2).replace('.',',')}% a.m.</span><h2>Projeção do patrimônio</h2><div class="mut">Sólido: patrimônio acumulado + rendimento. Claro: aporte previsto no planejamento do mês.</div></div><div class="pat-total"><small>Saldo projetado</small><strong>${fmt(p.final)}</strong><span class="positive">+ ${fmt(p.totalInterest)} em rendimentos</span></div></div>
-  <div class="aa-stack-wrap">${p.rows.map(r=>{
-    const solid=Math.max(0,r.total-r.contribution), sh=solid/max*200, ah=Math.max(0,r.contribution)/max*200;
-    return `<div class="aa-stack-col"><div class="aa-stack-bar" title="${r.label}: ${fmt(r.total)}"><div class="aa-stack-aporte" style="height:${ah}px"></div><div class="aa-stack-solid" style="height:${Math.max(3,sh)}px"></div></div><small>${r.label}</small><b>${fmt(r.total)}</b></div>`;
-  }).join('')}</div></div>`;
-}
-
-const _renderAllV12Base=renderAll;
-renderAll=function(){
-  ensureV12();
-  const visitor=aaScope==='Visitante', realDb=db, realScope=aaScope;
-  if(visitor){db=demoDBV12();aaScope='Casal';document.body.classList.add('visitor-lock')}
-  else document.body.classList.remove('visitor-lock');
-  ensureIncomeProfileV10();
-  renderHome();renderBudget();renderCards();renderReserves();renderAnalytics();renderFinancing();renderFerreira();renderAlerts();renderCategories();renderBackup();
-  if(visitor){
-    const banner=document.createElement('div');banner.className='visitor-note';banner.innerHTML='<b>Modo Visitante</b> · todos os valores, cartões, reservas, patrimônio, financiamento e descrições desta visualização são demonstrativos.';
-    const active=document.querySelector('.view.active'); if(active)active.prepend(banner);
-    db=realDb;aaScope=realScope;
+/* Colunas v14:
+   sólido = somente patrimônio existente hoje + juros compostos sobre esse patrimônio certo;
+   claro = aportes futuros previstos, acumulados separadamente, sem gerar rendimento na parte sólida.
+*/
+function aaProjectionCertainV14(){
+  const reserve=(db.reserves||[]).find(r=>r.name==='A&A')||(db.reserves||[]).find(r=>String(r.id||'').toLowerCase()==='aa');
+  const initial=+(reserve?.value||reserve?.initial||0);
+  const rate=+(reserve?.rate||0);
+  let certain=initial, projectedContributions=0, totalCertainInterest=0;
+  let keys=Object.keys(db.budget||{}).sort((a,b)=>monthIndex(a)-monthIndex(b)).filter(k=>monthIndex(k)>=monthIndex(mk()));
+  if(keys.length<6){
+    let last=keys.length?keys[keys.length-1]:mk();
+    while(keys.length<6){last=nextMonth(last);keys.push(last)}
   }
+  const rows=keys.map(k=>{
+    const interest=certain*(rate/100);
+    certain+=interest;
+    totalCertainInterest+=interest;
+    let contribution=0;
+    try{
+      const rr=(db.budget?.[k]?.expense||[]).find(x=>norm(x.category).includes('reserva'));
+      contribution=+(rr?.budget||0);
+    }catch(e){}
+    projectedContributions+=contribution;
+    return {key:k,label:label(k),certain,interest,contribution,projectedContributions,total:certain+projectedContributions};
+  });
+  return {initial,rate,rows,totalCertainInterest,finalCertain:certain,finalProjected:certain+projectedContributions,projectedContributions};
 }
-document.title='A&A Finanças · v12';
-ensureV12();persist();renderAll();
+function aaProjectionHTML(){
+ const p=aaProjectionCertainV14(),max=Math.max(...p.rows.map(r=>r.total),1);
+ return `<div class="card stack-card"><div class="pat-head"><div><span class="tag">A&A · ${p.rate.toFixed(2).replace('.',',')}% a.m.</span><h2>Projeção do patrimônio</h2><div class="mut">Sólido = patrimônio que já existe + seus rendimentos compostos. Claro = aportes futuros previstos, mantidos separados até serem efetivamente realizados.</div></div><div class="pat-total"><small>Patrimônio certo projetado</small><strong>${fmt(p.finalCertain)}</strong><span class="positive">+ ${fmt(p.totalCertainInterest)} em rendimentos certos</span><small style="display:block;margin-top:6px">Com aportes planejados: ${fmt(p.finalProjected)}</small></div></div>
+ <div class="stack-bars">${p.rows.map(r=>{const sh=r.certain/max*200,ah=r.projectedContributions/max*200;return `<div class="stack-col"><div class="stack-bar" title="${r.label} · certo ${fmt(r.certain)} · aportes projetados acumulados ${fmt(r.projectedContributions)}"><div class="stack-future" style="height:${Math.max(0,ah)}px"></div><div class="stack-solid" style="height:${Math.max(3,sh)}px"></div></div><small>${r.label}</small><b>${fmt(r.total)}</b></div>`}).join('')}</div></div>`;
+}
+const _renderAllV13Original=renderAll;
+renderAll=function(){
+ ensureV13();ensureIncomeProfileV10();
+ renderHome();renderBudget();renderCards();renderReserves();renderAnalytics();renderFinancing();renderFerreira();renderAlerts();renderCategories();renderBackup();
+ installEyeV13();maskValuesV13();
+}
+document.title='A&A Finanças · v14';
+ensureV13();persist();renderAll();
 </script>
 
 <script>if("serviceWorker" in navigator && location.protocol.startsWith("http")){navigator.serviceWorker.register("sw.js").then(r=>r.update()).catch(()=>{});}</script></body></html>
