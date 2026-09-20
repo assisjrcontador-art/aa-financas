@@ -133,4 +133,178 @@ migrateV7();
 function renderAll(){renderHome();renderBudget();renderCards();renderReserves();renderAnalytics();renderFerreira();renderCategories();renderBackup()}
 
 syncCardBudgets();persist();renderAll();
-</script><script>if("serviceWorker" in navigator && location.protocol.startsWith("http")){navigator.serviceWorker.register("sw.js").catch(()=>{});}</script></body></html>
+</script>
+<script>
+/* ===== A&A v9 — correções estruturais ===== */
+const AA_V9 = true;
+
+function actualOwned(cat,type,k=mk(),owner=null){
+  return db.actuals.filter(a=>{
+    if(a.month!==k || a.type!==type || norm(a.category)!==norm(cat)) return false;
+    if(!owner) return true;
+    if(a.owner) return a.owner===owner;
+    const row=(type==='despesa'?budgetRows(k,'expense'):budgetRows(k,'income'))
+      .find(r=>norm(r.category)===norm(cat) && (type!=='despesa'||r.owner===owner));
+    return !!row;
+  }).reduce((s,a)=>s+(+a.amount||0),0);
+}
+
+function scopedExpense(k=mk(),real=false,scope=aaScope){
+  const rows=budgetRows(k,'expense').filter(x=>scope==='Casal'||x.owner===scope);
+  return rows.reduce((s,x)=>s+(real?actualOwned(x.category,'despesa',k,x.owner):(+x.budget||0)),0);
+}
+function scopedIncome(k=mk(),real=false,scope=aaScope){
+  const rows=budgetRows(k,'income').filter(x=>scope==='Casal'||inferredIncomeOwner(x)===scope);
+  return rows.reduce((s,x)=>s+(real?actualOwned(x.category,'receita',k,inferredIncomeOwner(x)):(+x.budget||0)),0);
+}
+
+function categoryModal(x,i,type){
+  const owner=type==='despesa'?(x.owner||'Assis'):inferredIncomeOwner(x);
+  const a=actualOwned(x.category,type,mk(),type==='despesa'?owner:null);
+  const closed=db.budget[mk()].closed;
+  modal(`<div class="mh"><div><h2>Editar categoria</h2><div class="mut">${label(mk())} · alteração somente deste mês</div></div><button class="btn" onclick="closeM()">×</button></div>
+  <div class="form">
+    <label class="full"><b>Nome da categoria</b><input id="mName" value="${esc(x.category)}" placeholder="Ex.: Apartamento"></label>
+    <label>Orçamento<input id="mBudget" type="number" step=".01" value="${x.budget}" ${closed?'disabled':''}></label>
+    ${type==='despesa'?`<label>Quem paga<select id="mOwner"><option ${owner==='Assis'?'selected':''}>Assis</option><option ${owner==='Andressa'?'selected':''}>Andressa</option></select></label>
+    <label>Comportamento<select id="mBeh"><option value="obrigacao" ${x.behavior!=='consumo'?'selected':''}>Obrigação</option><option value="consumo" ${x.behavior==='consumo'?'selected':''}>Consumo</option></select></label>`:''}
+    <label>Realizado atual<input value="${a.toFixed(2)}" disabled></label>
+    <label>Adicionar ao realizado<input id="mActual" type="number" step=".01" placeholder="0,00"></label>
+    <label>Data<input id="mDate" type="date" value="${new Date().toISOString().slice(0,10)}"></label>
+    <label class="full">Observação<input id="mNote" placeholder="Opcional"></label>
+    <div class="full actions">
+      <button class="btn primary" onclick="saveCatV9(${i},'${type}')">Salvar alterações</button>
+      <button class="btn red" onclick="removeMonthCatV8(${i},'${type}')">Excluir deste mês</button>
+    </div>
+  </div>
+  ${closed?'<p class="mut">Mês fechado: reabra o mês para alterar o orçamento.</p>':''}`);
+}
+
+function saveCatV9(i,type){
+  const arr=budgetRows(mk(),type==='receita'?'income':'expense');
+  const x=arr[i]; if(!x)return;
+  const oldName=x.category;
+  const oldOwner=type==='despesa'?(x.owner||'Assis'):inferredIncomeOwner(x);
+  const newName=($('#mName').value||'').trim()||oldName;
+
+  if(!db.budget[mk()].closed) x.budget=+$('#mBudget').value||0;
+  if(type==='despesa'){
+    x.behavior=$('#mBeh').value;
+    x.owner=$('#mOwner').value;
+  }
+  x.category=newName;
+
+  // Renomeia somente os realizados do mês atual ligados à linha editada.
+  db.actuals.forEach(a=>{
+    if(a.month===mk() && a.type===type && norm(a.category)===norm(oldName)){
+      if(type!=='despesa' || !a.owner || a.owner===oldOwner){
+        a.category=newName;
+        if(type==='despesa') a.owner=x.owner;
+      }
+    }
+  });
+
+  const v=+$('#mActual').value||0;
+  if(v){
+    db.actuals.push({
+      id:'a'+Date.now(),month:mk(),category:newName,type,amount:v,
+      date:$('#mDate').value,note:$('#mNote').value,
+      owner:type==='despesa'?x.owner:inferredIncomeOwner(x)
+    });
+  }
+  persist(); closeM(); renderAll();
+}
+
+function aaProjection(){
+  const aa=db.reserves.find(r=>r.id==='aa');
+  const rate=(+aa.rate||0)/100;
+  const now=new Date();
+  const monthNames=['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+  const serial=k=>(2000+(+k.slice(-2)))*12+monthNames.indexOf(k.slice(0,3));
+  const currentSerial=now.getFullYear()*12+now.getMonth();
+  const keys=Object.keys(db.budget)
+    .filter(k=>/^(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\d{2}$/.test(k))
+    .sort((a,b)=>serial(a)-serial(b))
+    .filter(k=>serial(k)>=currentSerial);
+
+  let balance=rValue(aa), totalInterest=0, totalContrib=0;
+  const rows=keys.map((k,idx)=>{
+    const reserveRows=budgetRows(k,'expense').filter(x=>norm(x.category)==='reserva');
+    let contribution=reserveRows.reduce((s,x)=>s+(+x.budget||0),0);
+    if(idx===0){
+      const realized=reserveRows.reduce((s,x)=>s+actualOwned(x.category,'despesa',k,x.owner),0);
+      contribution=Math.max(0,contribution-realized);
+    }
+    const opening=balance;
+    const interest=opening*rate;
+    balance=opening+interest+contribution;
+    totalInterest+=interest;
+    totalContrib+=contribution;
+    return {key:k,label:label(k),opening,interest,contribution,total:balance};
+  });
+  return {base:rValue(aa),rows,totalInterest,totalContrib,final:rows.length?rows.at(-1).total:rValue(aa)};
+}
+
+function aaProjectionHTML(){
+  const p=aaProjection();
+  if(!p.rows.length) return '';
+  const vals=[p.base,...p.rows.map(r=>r.total)];
+  let min=Math.min(...vals), max=Math.max(...vals);
+  if(max-min<1){max=min+1}
+  const W=760,H=260,PX=38,PY=28;
+  const pts=p.rows.map((r,i)=>{
+    const x=p.rows.length===1?W/2:PX+i*(W-2*PX)/(p.rows.length-1);
+    const y=PY+(max-r.total)/(max-min)*(H-2*PY);
+    return {...r,x,y};
+  });
+  const path=pts.map((p,i)=>(i?'L':'M')+p.x.toFixed(1)+' '+p.y.toFixed(1)).join(' ');
+  return `<div class="card reserve-projection">
+    <div class="projection-head">
+      <div><span class="tag">A&A · juros compostos</span><h2>Projeção mensal do patrimônio</h2>
+      <div class="mut">Saldo anterior + rendimento de ${db.reserves.find(r=>r.id==='aa').rate}% a.m. + aporte do mês = novo saldo.</div></div>
+      <div class="projection-kpis">
+        <div><small>Saldo atual</small><b>${fmt(p.base)}</b></div>
+        <div><small>Rendimentos projetados</small><b>${fmt(p.totalInterest)}</b></div>
+        <div><small>Saldo final</small><b>${fmt(p.final)}</b></div>
+      </div>
+    </div>
+    <div style="overflow-x:auto;padding-top:10px">
+      <svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:680px;height:300px;overflow:visible">
+        <path d="${path}" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" style="color:#31d69b"/>
+        ${pts.map(q=>`<circle cx="${q.x}" cy="${q.y}" r="6" fill="#071018" stroke="#52d8e8" stroke-width="4"/>
+          <text x="${q.x}" y="${Math.max(16,q.y-13)}" text-anchor="middle" fill="#eef6f8" font-size="12" font-weight="800">${fmt(q.total).replace('R$ ','')}</text>
+          <text x="${q.x}" y="${H-5}" text-anchor="middle" fill="#8497a3" font-size="11">${q.label.replace('/20','/')}</text>`).join('')}
+      </svg>
+    </div>
+    <div class="projection-table">
+      ${p.rows.map(r=>`<div class="projection-point"><small>${r.label}</small><b>${fmt(r.total)}</b>
+      <div class="mut">Rendimento: <span class="positive">+${fmt(r.interest)}</span></div>
+      <div class="mut">Aporte: +${fmt(r.contribution)}</div></div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function renderReserves(){
+  const personal=db.reserves.filter(r=>r.owner==='Casal').reduce((s,r)=>s+rValue(r),0);
+  const proj=aaProjection();
+  $('#reserves').innerHTML=`<div class="kpis">
+    <div class="card kpi"><label>Patrimônio financeiro do casal</label><strong>${fmt(personal)}</strong><span class="mut">A&A + objetivos específicos</span></div>
+    <div class="card kpi"><label>A&A hoje</label><strong>${fmt(proj.base)}</strong><span class="mut">Saldo atual</span></div>
+    <div class="card kpi"><label>Rendimento projetado</label><strong>${fmt(proj.totalInterest)}</strong><span class="mut">Juros compostos no período</span></div>
+    <div class="card kpi"><label>A&A projetado</label><strong>${fmt(proj.final)}</strong><span class="mut">Saldo final com juros e aportes</span></div>
+  </div>
+  <div class="reserve-grid">${db.reserves.map((r,i)=>{
+    const v=rValue(r),goal=+r.goal||0,p=goal?Math.min(100,v/goal*100):0;
+    return `<div class="card reserve"><span class="tag">${esc(r.owner)}</span><h2>${esc(r.name)}</h2>
+    <div class="big">${fmt(v)}</div><div class="mut">${esc(r.purpose)} · ${r.rate}% a.m.</div>
+    ${goal?`<div class="goal"><i style="width:${p}%"></i></div><small>${p.toFixed(1)}% da meta de ${fmt(goal)}</small>`:''}
+    <div class="actions" style="margin-top:16px"><button class="btn" onclick="editReserve(${i})">Editar</button><button class="btn soft" onclick="projectReserve(${i})">Simular</button></div></div>`;
+  }).join('')}${aaProjectionHTML()}</div>`;
+}
+
+// Marca visual para confirmar que esta versão carregou.
+document.title='A&A Finanças · v9';
+syncCardBudgets(); persist(); renderAll();
+</script>
+
+<script>if("serviceWorker" in navigator && location.protocol.startsWith("http")){navigator.serviceWorker.register("sw.js").then(r=>r.update()).catch(()=>{});}</script></body></html>
