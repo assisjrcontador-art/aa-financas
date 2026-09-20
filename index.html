@@ -929,4 +929,141 @@ document.title='A&A Finanças · v16';
 ensureV16();persist();renderAll();
 </script>
 
+
+<style>
+/* ===== A&A v17 · estabilização funcional ===== */
+.nav button i{display:none!important}
+@media(max-width:650px){
+  .nav{display:flex!important;width:max-content!important;min-width:100%!important;gap:4px!important}
+  .nav button,.nav button:nth-child(n+7){display:flex!important;min-width:92px!important;flex:0 0 auto!important}
+  .kpis,.finance-grid{display:grid!important;grid-template-columns:1fr 1fr!important;overflow:visible!important}
+  .kpis>.card,.finance-grid>.card{min-width:0!important}
+  .stack-bars{display:flex!important;gap:12px!important;overflow-x:auto!important;align-items:flex-end!important;padding:18px 4px 8px!important;scroll-snap-type:x proximity}
+  .stack-col{min-width:92px!important;flex:0 0 92px!important;scroll-snap-align:start}
+}
+@media(max-width:430px){.kpis,.finance-grid{grid-template-columns:1fr!important}}
+</style>
+<script>
+/* ===== A&A v17 ===== */
+function cleanNavTextV17(txt){return String(txt||'').replace(/[⌂◇▰↗⚙↻✦◆◈▣□△▽→←]+/g,'').trim()}
+function reserveByNameV17(name){const n=norm(name);return (db.reserves||[]).find(r=>norm(r.name)===n)||null}
+function reserveValueV17(name){const r=reserveByNameV17(name);return r?rValue(r):0}
+function monthSerialV17(k){
+ const mons=['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'],m=mons.indexOf(String(k).slice(0,3)),y=2000+(+String(k).slice(-2));
+ return y*12+m;
+}
+function monthKeyV17(n){
+ const mons=['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+ return mons[((n%12)+12)%12]+String(Math.floor(n/12)).slice(-2);
+}
+function plannedAAContributionV17(k){
+ const rows=db.budget?.[k]?.expense||[];
+ // Only explicit A&A reserve rows count as A&A contributions.
+ const explicit=rows.filter(x=>{
+   const n=norm(x.category);
+   return (n.includes('a&a')||n.includes('reserva a&a')||n.includes('reserva aa')) && !n.includes('carro') && !n.includes('ferreira');
+ });
+ return explicit.reduce((a,x)=>a+(+x.budget||0),0);
+}
+function aaProjectionV17(){
+ const initial=reserveValueV17('A&A'),rate=+(reserveByNameV17('A&A')?.rate||.78);
+ let certain=initial, projected=0, totalInterest=0;
+ const start=monthSerialV17(mk());
+ const budgetKeys=Object.keys(db.budget||{}).filter(k=>/^(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\d{2}$/.test(k));
+ const maxBudget=budgetKeys.length?Math.max(...budgetKeys.map(monthSerialV17)):start+5;
+ const end=Math.max(start+5,maxBudget);
+ const rows=[];
+ for(let serial=start;serial<=end;serial++){
+   const k=monthKeyV17(serial);
+   const interest=certain*(rate/100); certain+=interest; totalInterest+=interest;
+   const contribution=plannedAAContributionV17(k); projected+=contribution;
+   rows.push({key:k,label:label(k),certain,interest,contribution,projectedContributions:projected,total:certain+projected});
+ }
+ return {initial,rate,rows,totalInterest,finalCertain:certain,projected,finalProjected:certain+projected};
+}
+function aaProjectionCertainV16(){const p=aaProjectionV17();return {...p,totalCertainInterest:p.totalInterest,projectedContributions:p.projected}}
+function aaProjectionCertainV14(){return aaProjectionCertainV16()}
+function aaProjectionHTML(){
+ const p=aaProjectionV17(),max=Math.max(...p.rows.map(r=>r.total),1);
+ return `<div class="card stack-card"><div class="pat-head"><div><span class="tag">A&A · ${p.rate.toFixed(2).replace('.',',')}% a.m.</span><h2>Projeção A&A</h2><div class="mut">Cada coluna representa um mês consecutivo. Sólido = saldo existente + rendimentos desse saldo. Claro = aportes A&A planejados, sem rendimento até serem realizados.</div></div><div class="pat-total"><small>Patrimônio certo projetado</small><strong>${fmt(p.finalCertain)}</strong><span class="positive">+ ${fmt(p.totalInterest)} em rendimentos</span><small style="display:block;margin-top:6px">Cenário com aportes: ${fmt(p.finalProjected)}</small></div></div>
+ <div class="stack-bars">${p.rows.map(r=>{const solid=r.certain/max*210,light=r.projectedContributions/max*210;return `<div class="stack-col"><div class="stack-bar" title="${r.label}: certo ${fmt(r.certain)}; aporte do mês ${fmt(r.contribution)}; aportes acumulados ${fmt(r.projectedContributions)}"><div class="stack-future" style="height:${Math.max(0,light)}px"></div><div class="stack-solid" style="height:${Math.max(4,solid)}px"></div></div><small>${r.label}</small><b>${fmt(r.total)}</b>${r.contribution?`<em class="mut" style="font-size:10px">+${fmt(r.contribution)}</em>`:''}</div>`}).join('')}</div></div>`;
+}
+function ensureV17(){
+ ensureV16();
+ const aa=reserveByNameV17('A&A'),car=reserveByNameV17('Carro'),fer=reserveByNameV17('Ferreira Imóveis');
+ if(aa)aa.rate=.78;if(car)car.rate=.78;if(fer)fer.rate=.78;
+ const f=db.financing||{};
+ f.term=+(f.term||f.prazo||360);f.remaining=+(f.remaining||f.prazoRemanescente||317);
+ f.paid=+(f.paid||f.paidCount||f.parcelasPagas||43);f.rate=+(f.rate||f.nominalAnnual||f.taxa||4.25);
+ f.balance=+(f.balance||f.saldoDevedor||116925);f.nextValue=+(f.nextValue||f.nextPayment||f.proximaParcela||646.47);
+ f.nextDue=f.nextDue||f.proximoVencimento||'03/10/2026';f.insurance=+(f.insurance||f.seguro||30.71);
+ db.financing=f;
+}
+function renderReserves(){
+ const aa=reserveValueV17('A&A'),car=reserveValueV17('Carro'),couple=aa+car,p=aaProjectionV17();
+ const cards=(db.reserves||[]).filter(r=>norm(r.name)!==norm('Ferreira Imóveis'));
+ $('#reserves').innerHTML=`<div class="kpis">
+ <div class="card kpi"><label>Patrimônio do casal hoje</label><strong>${fmt(couple)}</strong><span class="mut">A&A + Carro</span></div>
+ <div class="card kpi"><label>A&A hoje</label><strong>${fmt(aa)}</strong><span class="mut">0,78% a.m.</span></div>
+ <div class="card kpi"><label>Carro hoje</label><strong>${fmt(car)}</strong><span class="mut">0,78% a.m.</span></div>
+ <div class="card kpi"><label>Rendimentos certos A&A</label><strong class="positive">+${fmt(p.totalInterest)}</strong><span class="mut">aportes futuros fora da base</span></div></div>
+ ${aaProjectionHTML()}
+ <div class="reserve-grid reserve-cards-v10">${cards.map(r=>{const v=rValue(r),goal=+r.goal||0,pct=goal?Math.min(100,v/goal*100):0;return `<div class="card reserve"><span class="tag">${esc(r.owner||'Casal')}</span><h2>${esc(r.name)}</h2><div class="big">${fmt(v)}</div><div class="mut">${(+r.rate||0).toFixed(2).replace('.',',')}% a.m.</div>${goal?`<div class="progress-v13"><i style="width:${pct}%"></i></div><small class="mut">${pct.toFixed(1).replace('.',',')}% da meta ${fmt(goal)}</small>`:''}</div>`}).join('')}</div>`;
+}
+function financeTrendV17(f){
+ const pts=(f.recent||[]).map(x=>({n:+x[1],v:+x[2]})).filter(x=>isFinite(x.n)&&isFinite(x.v)&&x.v>0).sort((a,b)=>a.n-b.n);
+ if(pts.length<2)return {monthlyRate:.0019};
+ const first=pts[0],last=pts[pts.length-1],months=Math.max(1,last.n-first.n);
+ return {monthlyRate:Math.pow(last.v/first.v,1/months)-1};
+}
+function financeProjectionV17(){
+ const f=db.financing,trend=financeTrendV17(f),rows=[],n=+f.remaining||317;
+ let bal=+f.balance||116925,payment=+f.nextValue||646.47;
+ const baseBal=bal,baseAmort=200.91,baseInterestCorr=414.81,insurance=+f.insurance||30.71;
+ // Use observed current amortization as anchor; grow amortization gradually so the balance is extinguished at the contractual horizon.
+ // A smooth power curve is solved numerically to sum exactly to current principal.
+ const target=baseBal/baseAmort;
+ let lo=0,hi=.03;
+ const factorSum=g=>Array.from({length:n},(_,i)=>Math.pow(1+g,i)).reduce((a,b)=>a+b,0);
+ for(let j=0;j<80;j++){let mid=(lo+hi)/2;if(factorSum(mid)<target)lo=mid;else hi=mid}
+ const amortGrowth=(lo+hi)/2;
+ for(let i=0;i<n&&bal>0.005;i++){
+   if(i>0)payment*=1+trend.monthlyRate;
+   let amort=Math.min(bal,baseAmort*Math.pow(1+amortGrowth,i));
+   if(i===n-1||bal-amort<.01)amort=bal;
+   const interestCorrection=Math.max(0,payment-insurance-amort);
+   bal=Math.max(0,bal-amort);
+   const d=new Date(2026,9+i,3);
+   rows.push({n:(+f.paid||43)+i+1,date:d.toLocaleDateString('pt-BR'),installment:payment,amort,interest:interestCorrection,balance:bal});
+ }
+ return rows;
+}
+function financeProjectionV13(){return financeProjectionV17()}
+function renderFinancing(){
+ const f=db.financing,p=financeProjectionV17(),pct=(+f.paid/+f.term)*100,trend=financeTrendV17(f),future=p.reduce((a,x)=>a+x.installment,0);
+ $('#financing').innerHTML=`<div class="finance-grid">
+ <div class="card kpi finance-official"><label>Saldo devedor oficial</label><strong>${fmt(+f.balance)}</strong><span class="mut">${f.generated||'20/09/2026'}</span></div>
+ <div class="card kpi finance-official"><label>Parcelas transcorridas</label><strong>${+f.paid} / ${+f.term}</strong><span class="mut">${pct.toFixed(1).replace('.',',')}% do prazo</span></div>
+ <div class="card kpi finance-official"><label>Prazo remanescente</label><strong>${+f.remaining} meses</strong><span class="mut">taxa nominal ${String(f.rate).replace('.',',')}% a.a.</span></div>
+ <div class="card kpi finance-official"><label>Próxima cobrança oficial</label><strong>${fmt(+f.nextValue)}</strong><span class="mut">${f.nextDue}</span></div></div>
+ <div class="grid2"><div class="card finance-card finance-official"><span class="tag">DADOS OFICIAIS</span><h2>Contrato habitacional</h2><div class="income-row"><span>Sistema</span><b>${f.system||'TP'}</b></div><div class="income-row"><span>Indexador</span><b>${f.indexer||'POUPANÇA/FGTS NO SFH'}</b></div><div class="progress-v13"><i style="width:${pct}%"></i></div><div class="mut">Saldo e próxima cobrança são dados do demonstrativo cadastrado.</div></div>
+ <div class="card finance-card finance-sim"><span class="tag">ESTIMATIVA</span><h2>Cenário futuro</h2><div class="income-row"><span>Fluxo estimado</span><b>${fmt(future)}</b></div><div class="income-row"><span>Tendência da prestação</span><b>≈ ${(trend.monthlyRate*100).toFixed(3).replace('.',',')}% a.m.</b></div><div class="mut">Prestação cresce pela tendência histórica. Saldo devedor cai somente pela amortização estimada, calibrada para o prazo remanescente.</div></div></div>
+ <div class="card section" style="margin-top:15px"><h2>Histórico oficial disponível</h2><div class="tablewrap"><table><thead><tr><th>Parcela</th><th>Pagamento</th><th class="money">Pago</th></tr></thead><tbody>${(f.recent||[]).map(x=>`<tr><td>${x[1]}</td><td>${x[0]}</td><td class="money">${fmt(x[2])}</td></tr>`).join('')}</tbody></table></div></div>
+ <div class="card section finance-sim" style="margin-top:15px"><span class="tag">PROJEÇÃO ESTIMADA</span><h2>Parcelas futuras</h2><div class="tablewrap"><table><thead><tr><th>Nº</th><th>Data</th><th class="money">Parcela estimada</th><th class="money">Amortização estimada</th><th class="money">Juros/correção estim.</th><th class="money">Saldo estimado</th></tr></thead><tbody>${p.map(x=>`<tr><td>${x.n}</td><td>${x.date}</td><td class="money">${fmt(x.installment)}</td><td class="money">${fmt(x.amort)}</td><td class="money">${fmt(x.interest)}</td><td class="money">${fmt(x.balance)}</td></tr>`).join('')}</tbody></table></div></div>`;
+}
+function nav(v,btn){
+ document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$('#'+v).classList.add('active');
+ document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));if(btn)btn.classList.add('active');
+ const title=document.getElementById('pageTitle');if(title&&btn)title.textContent=cleanNavTextV17(btn.textContent);
+ window.scrollTo({top:0,behavior:'smooth'});maskValuesV13();
+}
+function renderAll(){
+ ensureV17();ensureIncomeProfileV10();
+ renderHome();renderBudget();renderCards();renderReserves();renderAnalytics();renderFinancing();renderFerreira();renderAlerts();renderCategories();renderBackup();
+ installEyeV13();maskValuesV13();
+}
+document.title='A&A Finanças · v17';
+ensureV17();persist();renderAll();
+</script>
+
 <script>if("serviceWorker" in navigator && location.protocol.startsWith("http")){navigator.serviceWorker.register("sw.js").then(r=>r.update()).catch(()=>{});}</script></body></html>
