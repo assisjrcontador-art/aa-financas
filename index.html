@@ -1359,4 +1359,192 @@ if(typeof renderAll==='function')renderAll();
 })();
 </script>
 
-<script>if("serviceWorker" in navigator && location.protocol.startsWith("http")){navigator.serviceWorker.register("sw.js").then(r=>r.update()).catch(()=>{});}</script></body></html>
+<script>if("serviceWorker" in navigator && location.protocol.startsWith("http")){navigator.serviceWorker.register("sw.js").then(r=>r.update()).catch(()=>{});}</script>
+<style id="aa-mobile-final">
+:root{--aa-nav-h:68px}
+body{padding-bottom:calc(var(--aa-nav-h) + env(safe-area-inset-bottom) + 12px)!important}
+.nav{
+ position:fixed!important;left:0!important;right:0!important;bottom:0!important;z-index:9990!important;
+ height:calc(var(--aa-nav-h) + env(safe-area-inset-bottom))!important;
+ padding-bottom:env(safe-area-inset-bottom)!important;
+ overflow-x:auto!important;overflow-y:hidden!important;white-space:nowrap!important;
+ -webkit-overflow-scrolling:touch!important;scrollbar-width:none!important;
+ box-shadow:0 -8px 28px rgba(0,0,0,.22)!important
+}
+.nav::-webkit-scrollbar{display:none}
+.nav button{flex:0 0 auto!important;min-width:84px!important;height:var(--aa-nav-h)!important}
+#aaWelcome{
+ position:fixed;inset:0;z-index:999998;background:#031b15;display:none;align-items:center;justify-content:center;
+ text-align:center;opacity:0;transition:opacity .45s ease
+}
+#aaWelcome.show{display:flex;opacity:1}
+#aaWelcome .inner{padding:28px;animation:aaWelcomeIn .7s ease both}
+#aaWelcome .brand{font:700 27px/1.1 system-ui,-apple-system,sans-serif;letter-spacing:.13em;color:#f2fff9}
+#aaWelcome .hello{margin-top:15px;color:#9fc2b5;font:400 16px/1.4 system-ui,-apple-system,sans-serif}
+@keyframes aaWelcomeIn{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){#aaWelcome .inner{animation:none}}
+</style>
+
+<div id="aaWelcome" aria-hidden="true"><div class="inner">
+ <div class="brand">A&amp;A FINANÇAS</div>
+ <div class="hello" id="aaWelcomeText">Seja bem-vindo, Assis</div>
+</div></div>
+
+<script id="aa-final-mobile-logic">
+(function(){
+ /* ---------- usuário local para a tela de boas-vindas ---------- */
+ const USER_KEY='aa_device_user';
+ function deviceUser(){return localStorage.getItem(USER_KEY)||'Assis'}
+ function welcomeText(){
+   const u=deviceUser();
+   return u==='Andressa'?'Seja bem-vinda, Andressa':'Seja bem-vindo, Assis';
+ }
+ window.AADeviceUser={
+   get:deviceUser,
+   set:function(v){if(v==='Assis'||v==='Andressa')localStorage.setItem(USER_KEY,v)}
+ };
+
+ /* ---------- gráfico A&A: base comum + evolução acumulada ---------- */
+ function budgetKeys(){
+   return Object.keys(db.budget||{}).filter(k=>/^(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\d{2}$/.test(k));
+ }
+ function projection(){
+   const base=reserveValueV17('A&A');
+   const rate=+(reserveByNameV17('A&A')?.rate||.78);
+   const current=monthSerialV17(mk());
+   const future=budgetKeys().map(monthSerialV17).filter(x=>x>current).sort((a,b)=>a-b);
+   const end=future.length?Math.min(current+12,Math.max(...future)):current+1;
+   let certain=base,planned=0,totalInterest=0,rows=[];
+   for(let serial=current+1;serial<=end;serial++){
+     const k=monthKeyV17(serial);
+     const interest=certain*(rate/100);
+     certain+=interest; totalInterest+=interest;
+     const contribution=aa19PlannedContribution(k);
+     planned+=contribution;
+     rows.push({key:k,label:label(k),certain,interest,contribution,planned,total:certain+planned,
+                certainGrowth:certain-base});
+   }
+   return {base,rate,rows,totalInterest,finalCertain:certain,planned,finalProjected:certain+planned};
+ }
+ window.aaProjectionV17=projection;
+ window.aaProjectionV19=projection;
+ window.aa20Projection=projection;
+
+ window.aaProjectionHTML=function(){
+   const p=projection(); if(!p.rows.length)return '';
+   const maxGrowth=Math.max(...p.rows.map(r=>r.total-p.base),1);
+   /* Base visual + crescimento relativo à MESMA base. Assim o sólido sobe claramente mês a mês. */
+   const basePx=76, growthArea=128;
+   return `<div class="card stack-card"><div class="pat-head"><div>
+    <span class="tag">A&A · ${p.rate.toFixed(2).replace('.',',')}% a.m.</span><h2>Projeção A&A</h2>
+    <div class="mut">Sólido = patrimônio que já existe e seus rendimentos. Claro = aportes planejados ainda não realizados. A altura de cada mês é comparada sempre com a base real atual (${fmt(p.base)}).</div>
+   </div><div class="pat-total"><small>Patrimônio certo no último mês</small><strong>${fmt(p.finalCertain)}</strong>
+    <span class="positive">+ ${fmt(p.totalInterest)} em rendimentos</span>
+    <small style="display:block;margin-top:6px">Com aportes planejados: ${fmt(p.finalProjected)}</small></div></div>
+   <div class="aa20-chart">${p.rows.map(r=>{
+      const solid=basePx+(r.certainGrowth/maxGrowth)*growthArea;
+      const light=(r.planned/maxGrowth)*growthArea;
+      return `<div class="aa20-col" title="${r.label}: patrimônio certo ${fmt(r.certain)}; crescimento desde a base ${fmt(r.certainGrowth)}; aporte previsto ${fmt(r.contribution)}">
+       <div class="aa20-barbox"><div class="aa20-plan" style="height:${Math.max(0,light)}px"></div><div class="aa20-certain" style="height:${Math.max(basePx,solid)}px"></div></div>
+       <small>${r.label}</small><b>${fmt(r.total)}</b></div>`;
+   }).join('')}</div></div>`;
+ };
+
+ /* ---------- financiamento: próxima oficial + projeção variável calibrada pelo histórico ---------- */
+ window.financeProjectionV19=function(){
+   const f=db.financing||{}, n=+f.remaining||317;
+   let bal=+f.balance||116925;
+   const annual=(+f.rate||4.25)/100, monthlyRate=annual/12;
+   const hist=(f.recent||[]).map(x=>+x[2]).filter(Number.isFinite);
+   const nextOfficial=+f.nextValue||646.47;
+   /* tendência robusta em R$/mês: mediana das diferenças históricas, limitada para evitar extrapolação absurda */
+   let diffs=[]; for(let i=1;i<hist.length;i++)diffs.push(hist[i]-hist[i-1]);
+   diffs.sort((a,b)=>a-b);
+   let median=diffs.length?(diffs.length%2?diffs[(diffs.length-1)/2]:(diffs[diffs.length/2-1]+diffs[diffs.length/2])/2):1.05;
+   median=Math.max(.35,Math.min(1.75,median));
+   const rows=[];
+   for(let i=0;i<n&&bal>.01;i++){
+     /* tendência observada pesa mais no curto prazo e se dissipa no longo prazo */
+     const trendStep=median*Math.exp(-i/84);
+     const projectedBill=i===0?nextOfficial:rows[i-1].installment+trendStep;
+     const interest=bal*monthlyRate;
+     /* amortização cresce gradualmente; saldo cai apenas pela amortização */
+     const amort0=+f.amortization||200.91;
+     let amort=amort0*Math.pow(1+monthlyRate,i);
+     if(amort>bal)amort=bal;
+     bal=Math.max(0,bal-amort);
+     const d=new Date(2026,9+i,3);
+     rows.push({n:(+f.paid||43)+i+1,date:d.toLocaleDateString('pt-BR'),
+                installment:projectedBill,amort,interest,balance:bal});
+   }
+   return rows;
+ };
+ window.financeProjectionV17=window.financeProjectionV19;
+ window.financeProjectionV13=window.financeProjectionV19;
+
+ /* ---------- áudio de abertura ~10 s + som de troca de aba ---------- */
+ let audioCtx=null, musicStartedAt=0, musicNodes=[], soundEnabled=true, musicEnabled=true, hapticEnabled=true;
+ function ctx(){try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();return audioCtx}catch(e){return null}}
+ function tone(freq,dur=.045,gain=.008,delay=0,type='sine'){
+   if(!soundEnabled)return; const c=ctx();if(!c)return;
+   const t=c.currentTime+delay,o=c.createOscillator(),g=c.createGain();
+   o.type=type;o.frequency.setValueAtTime(freq,t);g.gain.setValueAtTime(.0001,t);
+   g.gain.exponentialRampToValueAtTime(gain,t+.008);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+   o.connect(g);g.connect(c.destination);o.start(t);o.stop(t+dur+.03);
+ }
+ function startMusic(){
+   if(!musicEnabled||musicStartedAt)return;
+   const c=ctx();if(!c)return;musicStartedAt=performance.now();
+   const master=c.createGain(), now=c.currentTime;
+   master.gain.setValueAtTime(.0001,now);master.gain.exponentialRampToValueAtTime(.028,now+.7);
+   master.gain.setValueAtTime(.028,now+7.2);master.gain.exponentialRampToValueAtTime(.0001,now+10);
+   master.connect(c.destination);
+   /* acorde ambiente instrumental original, sem arquivo/música de terceiros */
+   [[261.63,0],[329.63,.8],[392,1.6],[523.25,3.1],[440,4.8],[392,6.2],[329.63,7.4]].forEach(([f,d])=>{
+     const o=c.createOscillator(),g=c.createGain(),t=now+d;
+     o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.35,t+.35);
+     g.gain.exponentialRampToValueAtTime(.0001,Math.min(now+9.8,t+2.4));o.connect(g);g.connect(master);o.start(t);o.stop(Math.min(now+10,t+2.5));musicNodes.push(o);
+   });
+ }
+ function tabSound(){tone(690,.05,.006);if(hapticEnabled&&navigator.vibrate)navigator.vibrate(8)}
+ window.AASoundSettings={
+   music:v=>musicEnabled=!!v,sounds:v=>soundEnabled=!!v,haptic:v=>hapticEnabled=!!v,
+   get:()=>({music:musicEnabled,sounds:soundEnabled,haptic:hapticEnabled})
+ };
+
+ /* ---------- abertura: capa -> iniciar -> boas-vindas -> app; música continua até ~10 s ---------- */
+ const start=document.getElementById('aaStart'),splash=document.getElementById('aaSplash'),welcome=document.getElementById('aaWelcome');
+ if(start){
+   /* substitui listeners antigos clonando o botão */
+   const fresh=start.cloneNode(true);start.parentNode.replaceChild(fresh,start);
+   fresh.addEventListener('click',()=>{
+     startMusic();
+     if(splash){splash.classList.add('aa-leave');setTimeout(()=>splash.style.display='none',720)}
+     const wt=document.getElementById('aaWelcomeText');if(wt)wt.textContent=welcomeText();
+     setTimeout(()=>{if(welcome){welcome.style.display='flex';requestAnimationFrame(()=>welcome.classList.add('show'))}},430);
+     setTimeout(()=>{if(welcome){welcome.classList.remove('show');setTimeout(()=>welcome.style.display='none',470)}},2350);
+   });
+ }
+
+ /* ---------- navegação por swipe ---------- */
+ let x0=null,y0=null,t0=0;
+ function navButtons(){return [...document.querySelectorAll('.nav button')].filter(b=>b.offsetParent!==null)}
+ function swipe(dir){
+   const bs=navButtons();if(!bs.length)return;
+   let i=bs.findIndex(b=>b.classList.contains('active'));if(i<0)i=0;
+   const ni=i+dir;if(ni<0||ni>=bs.length)return;
+   bs[ni].click();bs[ni].scrollIntoView({behavior:'smooth',inline:'center',block:'nearest'});tabSound();
+ }
+ document.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;x0=e.touches[0].clientX;y0=e.touches[0].clientY;t0=Date.now()},{passive:true});
+ document.addEventListener('touchend',e=>{
+   if(x0===null)return;const x=e.changedTouches[0].clientX,y=e.changedTouches[0].clientY,dx=x-x0,dy=y-y0,dt=Date.now()-t0;x0=y0=null;
+   if(dt<700&&Math.abs(dx)>72&&Math.abs(dx)>Math.abs(dy)*1.45)swipe(dx<0?1:-1);
+ },{passive:true});
+ document.querySelector('.nav')?.addEventListener('click',e=>{if(e.target.closest('button'))tabSound()});
+
+ document.title='A&A Finanças';
+ setTimeout(()=>{if(typeof renderAll==='function')renderAll()},0);
+})();
+</script>
+
+</body></html>
