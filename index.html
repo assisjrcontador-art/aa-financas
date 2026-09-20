@@ -1085,10 +1085,223 @@ function renderAll(){
  renderHome();renderBudget();renderCards();renderReserves();renderAnalytics();renderFinancing();renderFerreira();renderAlerts();renderCategories();renderBackup();
  installEyeV13();maskValuesV13();
 }
-document.title='A&A Finanças · v17';
+document.title='A&A Finanças · v20';
 ensureV17();persist();renderAll();
 </script>
 
+
+
+<style id="aa-v19-style">
+/* v19: cabeçalhos sem símbolos decorativos */
+#title>i,#title>svg,#title>.icon,#title>.emoji,
+.top h1>i,.top h1>svg,.top h1>.icon,.top h1>.emoji{display:none!important}
+.aa19-chart{display:flex;align-items:flex-end;gap:12px;overflow-x:auto;padding:24px 4px 8px;min-height:290px}
+.aa19-col{min-width:78px;flex:1;text-align:center}
+.aa19-barbox{height:215px;display:flex;flex-direction:column;justify-content:flex-end}
+.aa19-planned{background:rgba(82,216,232,.25);border:1px solid rgba(82,216,232,.42);border-bottom:0;border-radius:9px 9px 0 0}
+.aa19-certain{background:linear-gradient(180deg,#31d69b,#168a68);border-radius:9px 9px 3px 3px;min-height:4px}
+.aa19-col small{display:block;margin-top:8px;color:#879ba6;white-space:nowrap}
+.aa19-col b{display:block;font-size:11px;margin-top:3px;white-space:nowrap}
+.aa19-col em{display:block;font-size:10px;margin-top:2px;font-style:normal}
+</style>
+<script id="aa-v19">
+/* ===== A&A v19: correções de cabeçalho, patrimônio, financiamento e consultor ===== */
+function aa19CleanLabel(t){
+ return String(t||'')
+  .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/gu,'')
+  .replace(/[⌂◇▰▦◈↗⚙↻✦◆▣□△▽→←☷⤓!]+/g,'')
+  .trim();
+}
+function aa19CleanHeadings(){
+ document.querySelectorAll('#title,.top h1,h1.page-title,h2.page-title').forEach(h=>{
+   h.querySelectorAll('i,svg,.icon,.emoji').forEach(x=>x.remove());
+   [...h.childNodes].forEach(n=>{if(n.nodeType===3)n.nodeValue=aa19CleanLabel(n.nodeValue)});
+ });
+}
+function nav(v,btn){
+ document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+ const view=document.getElementById(v);if(view)view.classList.add('active');
+ document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));
+ if(btn)btn.classList.add('active');
+ const title=document.getElementById('title');
+ if(title&&btn)title.textContent=aa19CleanLabel(btn.textContent);
+ aa19CleanHeadings();
+ window.scrollTo({top:0,behavior:'smooth'});
+ if(typeof maskValuesV13==='function')maskValuesV13();
+}
+
+/* Patrimônio:
+   verde = saldo A&A que já existe + rendimento SOMENTE desse saldo;
+   claro = aportes planejados acumulados, sem render enquanto forem apenas projeção. */
+function aa19PlannedContribution(k){
+ const rows=db.budget?.[k]?.expense||[];
+ return rows.filter(x=>{
+   const n=norm(x.category);
+   const generic=(n==='reserva'||n==='reserva a&a'||n==='reserva aa'||n==='a&a');
+   return generic && !n.includes('carro') && !n.includes('ferreira');
+ }).reduce((a,x)=>a+(+x.budget||0),0);
+}
+function aaProjectionV19(){
+ const initial=reserveValueV17('A&A'), rate=+(reserveByNameV17('A&A')?.rate||.78);
+ let certain=initial, planned=0, totalInterest=0;
+ const start=monthSerialV17(mk());
+ const keys=Object.keys(db.budget||{}).filter(k=>/^(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\d{2}$/.test(k));
+ const last=keys.length?Math.max(...keys.map(monthSerialV17)):start+5;
+ const end=Math.max(start+5,last), rows=[];
+ for(let serial=start;serial<=end;serial++){
+   const k=monthKeyV17(serial);
+   const interest=certain*(rate/100);
+   certain+=interest; totalInterest+=interest;
+   const contribution=aa19PlannedContribution(k);
+   planned+=contribution;
+   rows.push({key:k,label:label(k),certain,interest,contribution,planned,total:certain+planned});
+ }
+ return {initial,rate,rows,totalInterest,finalCertain:certain,planned,finalProjected:certain+planned};
+}
+function aaProjectionV17(){return aaProjectionV19()}
+function aaProjectionHTML(){
+ const p=aaProjectionV19(), max=Math.max(...p.rows.map(r=>r.total),1);
+ return `<div class="card stack-card"><div class="pat-head"><div><span class="tag">A&A · ${p.rate.toFixed(2).replace('.',',')}% a.m.</span><h2>Projeção A&A</h2><div class="mut">Verde = patrimônio que já existe + rendimento somente desse patrimônio. Claro = aportes planejados; eles não rendem enquanto forem apenas previsão.</div></div><div class="pat-total"><small>Patrimônio certo projetado</small><strong>${fmt(p.finalCertain)}</strong><span class="positive">+ ${fmt(p.totalInterest)} em rendimentos</span><small style="display:block;margin-top:6px">Com aportes planejados: ${fmt(p.finalProjected)}</small></div></div>
+ <div class="aa19-chart">${p.rows.map(r=>{const solid=r.certain/max*210,light=r.planned/max*210;return `<div class="aa19-col"><div class="aa19-barbox" title="${r.label}: certo ${fmt(r.certain)}; aporte do mês ${fmt(r.contribution)}; aportes acumulados ${fmt(r.planned)}"><div class="aa19-planned" style="height:${Math.max(0,light)}px"></div><div class="aa19-certain" style="height:${Math.max(4,solid)}px"></div></div><small>${r.label}</small><b>${fmt(r.total)}</b>${r.contribution?`<em class="mut">+${fmt(r.contribution)}</em>`:''}</div>`}).join('')}</div></div>`;
+}
+
+/* Financiamento:
+   cenário-base pela taxa nominal contratual, sem extrapolar para sempre a alta recente.
+   A parte principal+juros segue uma prestação financeira aproximadamente constante;
+   juros caem com o saldo e amortização cresce. Indexador futuro não é adivinhado. */
+function financeProjectionV19(){
+ const f=db.financing||{}, n=+f.remaining||317;
+ let bal=+f.balance||116925;
+ const annual=(+f.rate||4.25)/100, r=annual/12;
+ const insurance=+f.insurance||30.71;
+ const core=r>0 ? bal*r/(1-Math.pow(1+r,-n)) : bal/n;
+ const rows=[];
+ for(let i=0;i<n&&bal>.005;i++){
+   const interest=bal*r;
+   let amort=Math.max(0,core-interest);
+   if(i===n-1||amort>bal)amort=bal;
+   const installment=amort+interest+insurance;
+   bal=Math.max(0,bal-amort);
+   const d=new Date(2026,9+i,3);
+   rows.push({n:(+f.paid||43)+i+1,date:d.toLocaleDateString('pt-BR'),installment,amort,interest,balance:bal});
+ }
+ return rows;
+}
+function financeProjectionV17(){return financeProjectionV19()}
+function financeProjectionV13(){return financeProjectionV19()}
+function renderFinancing(){
+ const f=db.financing||{},p=financeProjectionV19(),pct=(+f.paid/+f.term)*100,future=p.reduce((a,x)=>a+x.installment,0);
+ $('#financing').innerHTML=`<div class="finance-grid">
+ <div class="card kpi finance-official"><label>Saldo devedor oficial</label><strong>${fmt(+f.balance)}</strong><span class="mut">${f.generated||'20/09/2026'}</span></div>
+ <div class="card kpi finance-official"><label>Parcelas transcorridas</label><strong>${+f.paid} / ${+f.term}</strong><span class="mut">${pct.toFixed(1).replace('.',',')}% do prazo</span></div>
+ <div class="card kpi finance-official"><label>Prazo remanescente</label><strong>${+f.remaining} meses</strong><span class="mut">taxa nominal ${String(f.rate).replace('.',',')}% a.a.</span></div>
+ <div class="card kpi finance-official"><label>Próxima cobrança oficial</label><strong>${fmt(+f.nextValue)}</strong><span class="mut">${f.nextDue}</span></div></div>
+ <div class="grid2"><div class="card finance-card finance-official"><span class="tag">DADOS OFICIAIS</span><h2>Contrato habitacional</h2><div class="income-row"><span>Sistema</span><b>${f.system||'TP'}</b></div><div class="income-row"><span>Indexador</span><b>${f.indexer||'POUPANÇA/FGTS NO SFH'}</b></div><div class="progress-v13"><i style="width:${pct}%"></i></div><div class="mut">Saldo e próxima cobrança são os valores do demonstrativo cadastrado.</div></div>
+ <div class="card finance-card finance-sim"><span class="tag">CENÁRIO-BASE</span><h2>Projeção futura</h2><div class="income-row"><span>Fluxo estimado</span><b>${fmt(future)}</b></div><div class="income-row"><span>Primeira estimada</span><b>${fmt(p[0]?.installment||0)}</b></div><div class="income-row"><span>Última estimada</span><b>${fmt(p[p.length-1]?.installment||0)}</b></div><div class="mut">A projeção usa saldo, prazo e taxa nominal atuais. Não repete indefinidamente a alta das últimas parcelas. Juros diminuem com o saldo e a amortização aumenta. Correções futuras do indexador não são previsíveis.</div></div></div>
+ <div class="card section" style="margin-top:15px"><h2>Histórico oficial disponível</h2><div class="tablewrap"><table><thead><tr><th>Parcela</th><th>Pagamento</th><th class="money">Pago</th></tr></thead><tbody>${(f.recent||[]).map(x=>`<tr><td>${x[1]}</td><td>${x[0]}</td><td class="money">${fmt(x[2])}</td></tr>`).join('')}</tbody></table></div></div>
+ <div class="card section finance-sim" style="margin-top:15px"><span class="tag">PROJEÇÃO GERENCIAL</span><h2>Parcelas futuras</h2><div class="tablewrap"><table><thead><tr><th>Nº</th><th>Data</th><th class="money">Parcela estimada</th><th class="money">Amortização estimada</th><th class="money">Juros estimados</th><th class="money">Saldo estimado</th></tr></thead><tbody>${p.map(x=>`<tr><td>${x.n}</td><td>${x.date}</td><td class="money">${fmt(x.installment)}</td><td class="money">${fmt(x.amort)}</td><td class="money">${fmt(x.interest)}</td><td class="money">${fmt(x.balance)}</td></tr>`).join('')}</tbody></table></div></div>`;
+}
+
+/* Consultor local: responde imediatamente usando os dados do próprio app.
+   Para conversa aberta com LLM ainda será necessário backend seguro. */
+function aa19AdvisorAnswer(q){
+ const t=norm(q), k=mk();
+ const expenses=(db.budget?.[k]?.expense||[]);
+ const inc=(db.budget?.[k]?.income||[]);
+ const plannedExp=expenses.reduce((a,x)=>a+(+x.budget||0),0);
+ const plannedInc=inc.reduce((a,x)=>a+(+x.budget||0),0);
+ const aa=reserveValueV17('A&A'),car=reserveValueV17('Carro');
+ const cardA=(db.cards||[]).filter(x=>norm(x.owner).includes('assis')).reduce((a,x)=>a+(+x.value||+x.amount||0),0);
+ const cardD=(db.cards||[]).filter(x=>norm(x.owner).includes('andressa')).reduce((a,x)=>a+(+x.value||+x.amount||0),0);
+ const over=expenses.map(x=>({c:x.category,b:+x.budget||0,a:+actual(x.category,'despesa')||0})).filter(x=>x.b>0&&x.a>x.b).sort((a,b)=>(b.a-b.b)-(a.a-a.b));
+ if(t.includes('patrimonio')||t.includes('reserva')) return `Hoje, o patrimônio do casal considerado no app é ${fmt(aa+car)}: A&A ${fmt(aa)} + Carro ${fmt(car)}. A reserva Ferreira Imóveis fica separada.`;
+ if(t.includes('financ')||t.includes('parcela')||t.includes('apartamento')){const p=financeProjectionV19();return `O saldo devedor cadastrado é ${fmt(+db.financing.balance)}. A próxima cobrança oficial é ${fmt(+db.financing.nextValue)}. No cenário-base atual, a prestação estimada fica próxima de ${fmt(p[0]?.installment||0)}, com juros caindo e amortização aumentando; o indexador futuro pode alterar os valores reais.`}
+ if(t.includes('cartao')||t.includes('nubank')) return `Pelos lançamentos cadastrados no app, a projeção dos cartões é Assis ${fmt(cardA)} e Andressa ${fmt(cardD)}. Para uma análise de fatura específica, informe o cartão ou o mês na pergunta.`;
+ if(t.includes('econom')||t.includes('cortar')||t.includes('gastar')||t.includes('orcamento')){
+   if(over.length)return `Neste mês, ${over.length} categoria(s) estão acima do planejado. As maiores diferenças são: ${over.slice(0,3).map(x=>`${x.c} (${fmt(x.a-x.b)} acima)`).join(', ')}. Eu começaria revisando essas categorias antes de aumentar gastos livres.`;
+   return `Para ${label(k)}, a receita planejada é ${fmt(plannedInc)} e as despesas planejadas somam ${fmt(plannedExp)}, deixando uma margem planejada de ${fmt(plannedInc-plannedExp)}. Não identifiquei categoria acima do orçamento entre as que possuem limite cadastrado.`;
+ }
+ if(t.includes('receita')||t.includes('renda')) return `A receita planejada para ${label(k)} soma ${fmt(plannedInc)}.`;
+ if(t.includes('despesa')||t.includes('orcamento')) return `As despesas planejadas para ${label(k)} somam ${fmt(plannedExp)}.`;
+ return `Consigo analisar agora os dados do A&A sobre orçamento, gastos acima do planejado, cartões, patrimônio, reservas e financiamento. Sua pergunta foi "${q}". Tente, por exemplo: "onde posso economizar este mês?", "como está nosso patrimônio?" ou "como está o financiamento?". Para respostas abertas sobre qualquer assunto financeiro, ainda precisamos conectar um backend de IA.`;
+}
+function advisorAskV13(){
+ const el=$('#advisorAskV13'),out=$('#advisorAnswerV13'),q=el?.value.trim();if(!q||!out)return;
+ out.textContent=aa19AdvisorAnswer(q);
+}
+const aa19OldRenderAlerts=renderAlerts;
+renderAlerts=function(){
+ aa19OldRenderAlerts();
+ const tag=document.querySelector('#alerts .chat-v13 .tag');if(tag)tag.textContent='CONSULTOR A&A';
+ const p=document.querySelector('#alerts .chat-v13 p');if(p)p.textContent='Pergunte sobre orçamento, cartões, patrimônio, reservas ou financiamento. As respostas usam os dados cadastrados neste aparelho.';
+ const out=$('#advisorAnswerV13');if(out)out.textContent='Pode perguntar. Ex.: Onde posso economizar este mês?';
+};
+
+const aa19Observer=new MutationObserver(()=>aa19CleanHeadings());
+aa19Observer.observe(document.documentElement,{subtree:true,childList:true});
+aa19CleanHeadings();
+document.title='A&A Finanças · v20';
+if(typeof renderAll==='function')renderAll();
+</script>
+
+
+<style id="aa-v20-style">
+/* v20 — gráfico patrimonial mês a mês */
+.aa20-chart{display:flex;align-items:flex-end;gap:10px;overflow-x:auto;overflow-y:hidden;padding:26px 2px 10px;min-height:285px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+.aa20-col{flex:0 0 86px;text-align:center;scroll-snap-align:start}
+.aa20-barbox{height:205px;display:flex;flex-direction:column;justify-content:flex-end}
+.aa20-plan{background:rgba(88,213,229,.28);border:1px solid rgba(88,213,229,.45);border-bottom:0;border-radius:8px 8px 0 0}
+.aa20-certain{background:linear-gradient(180deg,#35dfa4,#15916c);border-radius:8px 8px 3px 3px;min-height:5px}
+.aa20-col small{display:block;color:#8ca0aa;margin-top:8px;white-space:nowrap}
+.aa20-col b{display:block;font-size:11px;margin-top:3px;white-space:nowrap}
+</style>
+<script id="aa-v20">
+/* Patrimônio: mês atual + meses consecutivos, limitado a 12 colunas.
+   Se houver menos orçamento futuro, termina no último mês efetivamente cadastrado. */
+function aa20BudgetKeys(){
+ return Object.keys(db.budget||{}).filter(k=>/^(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\d{2}$/.test(k));
+}
+function aa20Projection(){
+ const initial=reserveValueV17('A&A');
+ const rate=+(reserveByNameV17('A&A')?.rate||.78);
+ const start=monthSerialV17(mk());
+ const future=aa20BudgetKeys().map(monthSerialV17).filter(x=>x>=start).sort((a,b)=>a-b);
+ const last=future.length ? Math.min(start+11,Math.max(...future)) : start;
+ let certain=initial,planned=0,totalInterest=0,rows=[];
+ for(let serial=start;serial<=last;serial++){
+   const k=monthKeyV17(serial);
+   const interest=certain*(rate/100);
+   certain+=interest; totalInterest+=interest;
+   const contribution=aa19PlannedContribution(k);
+   planned+=contribution;
+   rows.push({key:k,label:label(k),certain,interest,contribution,planned,total:certain+planned});
+ }
+ return {initial,rate,rows,totalInterest,finalCertain:certain,planned,finalProjected:certain+planned};
+}
+function aaProjectionV19(){return aa20Projection()}
+function aaProjectionV17(){return aa20Projection()}
+function aaProjectionHTML(){
+ const p=aa20Projection();
+ if(!p.rows.length)return '';
+ const max=Math.max(...p.rows.map(r=>r.total),1);
+ return `<div class="card stack-card"><div class="pat-head"><div><span class="tag">A&A · ${p.rate.toFixed(2).replace('.',',')}% a.m.</span><h2>Projeção A&A</h2><div class="mut">Cada coluna é um mês consecutivo. Verde = saldo existente + rendimento somente desse saldo. Claro = aportes planejados acumulados, sem rendimento até serem realizados. Exibimos até 12 meses conforme os orçamentos cadastrados.</div></div><div class="pat-total"><small>Patrimônio certo no último mês</small><strong>${fmt(p.finalCertain)}</strong><span class="positive">+ ${fmt(p.totalInterest)} em rendimentos</span><small style="display:block;margin-top:6px">Com aportes planejados: ${fmt(p.finalProjected)}</small></div></div>
+ <div class="aa20-chart">${p.rows.map(r=>{const solid=r.certain/max*195,light=r.planned/max*195;return `<div class="aa20-col" title="${r.label}: certo ${fmt(r.certain)}; aporte ${fmt(r.contribution)}; total com aportes ${fmt(r.total)}"><div class="aa20-barbox"><div class="aa20-plan" style="height:${Math.max(0,light)}px"></div><div class="aa20-certain" style="height:${Math.max(5,solid)}px"></div></div><small>${r.label}</small><b>${fmt(r.total)}</b></div>`}).join('')}</div></div>`;
+}
+
+/* Cartões: o mês mostrado é o MÊS DA FATURA / PAGAMENTO, não necessariamente o mês da compra. */
+function renderCards(){
+ let future=months.filter(k=>mi(k)>=mi(mk())).slice(0,12),
+ owners=cardFilterV7==='Todos'?['Assis','Andressa']:[cardFilterV7],
+ shown=db.cards.filter(c=>cardFilterV7==='Todos'||c.owner===cardFilterV7);
+ $('#cards').innerHTML=`<div class="scopebar">${['Todos','Assis','Andressa'].map(v=>`<button class="chip ${cardFilterV7===v?'active':''}" onclick="setCardFilterV7('${v}')">${v==='Todos'?'Todos os cartões':'Nubank '+v}</button>`).join('')}</div>
+ <div class="kpis">${owners.map(o=>`<div class="card kpi"><label>Próxima fatura · ${o}</label><strong>${fmt(cardProj(o,future[0]))}</strong><span class="mut">Valor previsto para pagamento no mês exibido</span></div>`).join('')}</div>
+ <div class="grid2"><div class="card section"><div class="toolbar"><div><h2>Faturas por mês de pagamento</h2><div class="mut">Ex.: Outubro/2026 = valor previsto para sair do orçamento em outubro. A compra pode ter ocorrido antes.</div></div><button class="btn primary" onclick="newCard()">＋ Nova compra</button></div>
+ <div class="tablewrap"><table><thead><tr><th>Fatura / pagamento</th>${owners.map(o=>`<th class="money">${o}</th>`).join('')}${cardFilterV7==='Todos'?'<th class="money">Total</th>':''}</tr></thead><tbody>${future.map(k=>`<tr><td>${label(k)}</td>${owners.map(o=>`<td class="money">${fmt(cardProj(o,k))}</td>`).join('')}${cardFilterV7==='Todos'?`<td class="money"><b>${fmt(cardProj('Assis',k)+cardProj('Andressa',k))}</b></td>`:''}</tr>`).join('')}</tbody></table></div></div>
+ <div class="card section"><h2>Compras cadastradas</h2><div class="mut">${shown.length} lançamento(s). As parcelas são direcionadas para o mês da fatura em que serão pagas.</div><div class="tablewrap"><table><tbody>${shown.slice().reverse().map(c=>`<tr><td><b>${esc(c.title)}</b><div class="mut">${c.owner} · ${c.total>1?c.current+'/'+c.total:'à vista'}</div></td><td class="money">${fmt(c.amount)}</td><td><button class="btn" onclick="editCard('${c.id}')">Editar</button></td></tr>`).join('')}</tbody></table></div></div></div>`;
+}
+document.title='A&A Finanças · v20';
+if(typeof renderAll==='function')renderAll();
+</script>
 
 <script id="aa-final-behavior">
 (function(){
