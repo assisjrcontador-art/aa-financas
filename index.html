@@ -307,4 +307,313 @@ document.title='A&A Finanças · v9';
 syncCardBudgets(); persist(); renderAll();
 </script>
 
+
+<script>
+/* ===== A&A v10 — receitas individuais + patrimônio redesenhado ===== */
+
+function ensureIncomeProfileV10(){
+  if(!db.incomeProfile) db.incomeProfile={};
+  db.incomeProfile.Assis={
+    Fixo:[{category:'Canyon Salário',budget:2900},{category:'Canyon Benefícios',budget:1700}],
+    Extra:[{category:'Bônus Canyon',budget:1000},{category:'Ferreira Imóveis',budget:1200}]
+  };
+  db.incomeProfile.Andressa={
+    Fixo:[{category:'Instituto Salário',budget:3800}],
+    Extra:[{category:'SUS',budget:1000},{category:'Projeto',budget:1000}]
+  };
+}
+
+function incomeSummaryV10(scope=aaScope){
+  ensureIncomeProfileV10();
+  const people=scope==='Casal'?['Assis','Andressa']:[scope];
+  let fixed=0,extra=0;
+  people.forEach(name=>{
+    const p=db.incomeProfile[name]||{Fixo:[],Extra:[]};
+    fixed+=(p.Fixo||[]).reduce((s,x)=>s+(+x.budget||0),0);
+    extra+=(p.Extra||[]).reduce((s,x)=>s+(+x.budget||0),0);
+  });
+  return {fixed,extra,total:fixed+extra,people};
+}
+
+function incomeCardsV10(){
+  const r=incomeSummaryV10();
+  return `<div class="income-v10">
+    <div class="card kpi income-kpi"><label>Receita fixa</label><strong>${fmt(r.fixed)}</strong><span class="mut">${aaScope==='Casal'?'Assis + Andressa':'Renda fixa de '+aaScope}</span></div>
+    <div class="card kpi income-kpi extra"><label>Receita extra</label><strong>${fmt(r.extra)}</strong><span class="mut">${aaScope==='Casal'?'Extras do casal':'Extras de '+aaScope}</span></div>
+    <div class="card kpi income-kpi total"><label>Receita total</label><strong>${fmt(r.total)}</strong><span class="mut">Fixa + extra</span></div>
+  </div>`;
+}
+
+function incomeDetailV10(){
+  const r=incomeSummaryV10();
+  return `<div class="grid2 income-detail-v10">${r.people.map(name=>{
+    const p=db.incomeProfile[name];
+    const fix=p.Fixo.reduce((s,x)=>s+x.budget,0), ext=p.Extra.reduce((s,x)=>s+x.budget,0);
+    return `<div class="card section">
+      <div class="toolbar"><div><span class="tag">${name}</span><h2>${fmt(fix+ext)}</h2></div></div>
+      <div class="income-group-title">Fixo · ${fmt(fix)}</div>
+      ${p.Fixo.map(x=>`<div class="income-row"><span>${esc(x.category)}</span><strong>${fmt(x.budget)}</strong></div>`).join('')}
+      <div class="income-group-title">Extra · ${fmt(ext)}</div>
+      ${p.Extra.map(x=>`<div class="income-row"><span>${esc(x.category)}</span><strong>${fmt(x.budget)}</strong></div>`).join('')}
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function showIncome(){
+  modal(`<div class="mh"><div><h2>Receitas · ${aaScope==='Casal'?'Consolidado':aaScope}</h2><div class="mut">Composição mensal da renda fixa e extra.</div></div><button class="btn" onclick="closeM()">×</button></div>
+  ${incomeCardsV10()}${incomeDetailV10()}`);
+}
+
+function renderHome(){
+  const k=mk(), inc=incomeSummaryV10().total, exp=scopedExpense(k), re=scopedExpense(k,true);
+  const rows=scopedExpenseRows(k), ob=rows.filter(x=>x.behavior!=='consumo'&&!isFreeRow(x));
+  const liq=ob.filter(x=>actualOwned(x.category,'despesa',k,x.owner)>0).length;
+  $('#home').innerHTML=scopeHTML()+`
+    <div class="hero-strip"><div><span>Central A&A · ${aaScope==='Casal'?'Consolidado':aaScope}</span><br><b>Seu orçamento, patrimônio e execução em um só lugar.</b></div><div class="spark">✦</div></div>
+    ${incomeCardsV10()}
+    <div class="kpis home-secondary">
+      <div class="card kpi"><label>Despesas / destinações</label><strong>${fmt(exp)}</strong><span class="mut">Realizado ${fmt(re)}</span></div>
+      <div class="card kpi"><label>Obrigações liquidadas</label><strong>${liq} / ${ob.length}</strong><span class="mut">No mês selecionado</span></div>
+      <div class="card kpi"><label>Orçamento a distribuir</label><strong class="${Math.abs(inc-exp)<.01?'positive':'negative'}">${fmt(inc-exp)}</strong><span class="mut">Meta: receitas = destinações</span></div>
+    </div>
+    ${walletHTML()}${ruleHTML()}
+    <div class="card section"><div class="toolbar"><div><h2>Execução de ${label(k)}</h2><div class="mut">${aaScope==='Casal'?'Consolidado = Assis + Andressa':'Somente o orçamento de '+aaScope}.</div></div><button class="btn soft" onclick="toggleClose()">${db.budget[k].closed?'Reabrir mês':'Fechar mês'}</button></div>
+    <div class="budget-grid">${rows.map(x=>catCardV7(x,budgetRows(k,'expense').indexOf(x))).join('')}</div></div>`;
+}
+
+function aaProjectionV10(){
+  const aa=db.reserves.find(r=>r.id==='aa');
+  const rate=(+aa.rate||0)/100;
+  const monthNames=['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+  const serial=k=>(2000+(+k.slice(-2)))*12+monthNames.indexOf(k.slice(0,3));
+  const start=serial(mk());
+  let keys=Object.keys(db.budget)
+    .filter(k=>/^(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\d{2}$/.test(k))
+    .sort((a,b)=>serial(a)-serial(b))
+    .filter(k=>serial(k)>=start);
+
+  // Mantém uma projeção útil mesmo se ainda não houver muitos meses cadastrados.
+  if(keys.length<6){
+    let last=keys.length?serial(keys[keys.length-1]):start-1;
+    while(keys.length<6){
+      last++;
+      const y=Math.floor(last/12), m=last%12;
+      keys.push(monthNames[m]+String(y).slice(-2));
+    }
+  }
+
+  let balance=rValue(aa), totalInterest=0, totalContrib=0;
+  const rows=keys.map((k,idx)=>{
+    const reserveRows=budgetRows(k,'expense').filter(x=>norm(x.category)==='reserva');
+    let contribution=reserveRows.reduce((s,x)=>s+(+x.budget||0),0);
+    if(idx===0 && reserveRows.length){
+      const realized=reserveRows.reduce((s,x)=>s+actualOwned(x.category,'despesa',k,x.owner),0);
+      contribution=Math.max(0,contribution-realized);
+    }
+    const opening=balance;
+    const interest=opening*rate;
+    balance=opening+interest+contribution;
+    totalInterest+=interest; totalContrib+=contribution;
+    return {key:k,label:monthNames.indexOf(k.slice(0,3))>=0?label(k):k,opening,interest,contribution,total:balance};
+  });
+  return {base:rValue(aa),rate:(+aa.rate||0),rows,totalInterest,totalContrib,final:rows.at(-1)?.total||rValue(aa)};
+}
+
+function aaProjectionHTML(){
+  const p=aaProjectionV10();
+  if(!p.rows.length)return '';
+  const values=[p.base,...p.rows.map(r=>r.total)];
+  const rawMin=Math.min(...values), rawMax=Math.max(...values);
+  const pad=Math.max((rawMax-rawMin)*0.18, rawMax*.008, 100);
+  const min=Math.max(0,rawMin-pad), max=rawMax+pad;
+  const W=Math.max(720,p.rows.length*112), H=280, L=72,R=28,T=30,B=48;
+  const X=i=>L+(p.rows.length===1?(W-L-R)/2:i*(W-L-R)/(p.rows.length-1));
+  const Y=v=>T+(max-v)/(max-min)*(H-T-B);
+  const pts=p.rows.map((r,i)=>({...r,x:X(i),y:Y(r.total)}));
+  const line=pts.map((q,i)=>(i?'L':'M')+q.x.toFixed(1)+' '+q.y.toFixed(1)).join(' ');
+  const area=line+` L ${pts.at(-1).x.toFixed(1)} ${H-B} L ${pts[0].x.toFixed(1)} ${H-B} Z`;
+  const grid=[0,.25,.5,.75,1].map(t=>{
+    const v=max-(max-min)*t,y=T+(H-T-B)*t;
+    return `<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" stroke="rgba(255,255,255,.07)" stroke-width="1"/>
+    <text x="${L-10}" y="${y+4}" text-anchor="end" fill="#7f929e" font-size="11">${(v/1000).toFixed(1)}k</text>`;
+  }).join('');
+  return `<div class="card patrimony-v10">
+    <div class="pat-head">
+      <div><span class="tag">A&A · ${p.rate.toFixed(2).replace('.',',')}% a.m.</span><h2>Evolução projetada do patrimônio</h2><div class="mut">Juros compostos calculados sobre o saldo de cada mês. Aportes são somados depois do rendimento.</div></div>
+      <div class="pat-total"><small>Saldo projetado</small><strong>${fmt(p.final)}</strong><span class="positive">+ ${fmt(p.totalInterest)} em rendimentos</span></div>
+    </div>
+    <div class="pat-chart-scroll"><svg viewBox="0 0 ${W} ${H}" style="width:${W}px;max-width:none;height:280px;display:block">
+      <defs><linearGradient id="aaAreaV10" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#31d69b" stop-opacity=".24"/><stop offset="100%" stop-color="#31d69b" stop-opacity=".015"/></linearGradient></defs>
+      ${grid}
+      <path d="${area}" fill="url(#aaAreaV10)"/>
+      <path d="${line}" fill="none" stroke="#31d69b" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+      ${pts.map(q=>`<circle cx="${q.x}" cy="${q.y}" r="5" fill="#0b151d" stroke="#52d8e8" stroke-width="3"/>
+      <text x="${q.x}" y="${H-17}" text-anchor="middle" fill="#9fb0ba" font-size="11">${q.label.replace('/20','/')}</text>`).join('')}
+    </svg></div>
+    <div class="pat-months">${p.rows.map(r=>`<div class="pat-month"><small>${r.label}</small><b>${fmt(r.total)}</b><span>Juros <em>+${fmt(r.interest)}</em></span><span>Aporte +${fmt(r.contribution)}</span></div>`).join('')}</div>
+  </div>`;
+}
+
+function renderReserves(){
+  const personal=db.reserves.filter(r=>r.owner==='Casal').reduce((s,r)=>s+rValue(r),0);
+  const p=aaProjectionV10();
+  $('#reserves').innerHTML=`
+    <div class="kpis">
+      <div class="card kpi"><label>Patrimônio financeiro do casal</label><strong>${fmt(personal)}</strong><span class="mut">A&A + objetivos específicos</span></div>
+      <div class="card kpi"><label>A&A hoje</label><strong>${fmt(p.base)}</strong><span class="mut">Saldo atual</span></div>
+      <div class="card kpi"><label>Rendimentos projetados</label><strong class="positive">+${fmt(p.totalInterest)}</strong><span class="mut">${p.rate.toFixed(2).replace('.',',')}% a.m. composto</span></div>
+      <div class="card kpi"><label>A&A projetado</label><strong>${fmt(p.final)}</strong><span class="mut">Juros + aportes</span></div>
+    </div>
+    ${aaProjectionHTML()}
+    <div class="reserve-grid reserve-cards-v10">${db.reserves.map((r,i)=>{
+      const v=rValue(r),goal=+r.goal||0,pct=goal?Math.min(100,v/goal*100):0;
+      return `<div class="card reserve"><span class="tag">${esc(r.owner)}</span><h2>${esc(r.name)}</h2><div class="big">${fmt(v)}</div>
+      <div class="mut">${esc(r.purpose)} · ${r.rate}% a.m.</div>${goal?`<div class="goal"><i style="width:${pct}%"></i></div><small>${pct.toFixed(1)}% da meta de ${fmt(goal)}</small>`:''}
+      <div class="actions" style="margin-top:16px"><button class="btn" onclick="editReserve(${i})">Editar</button><button class="btn soft" onclick="projectReserve(${i})">Simular</button></div></div>`;
+    }).join('')}</div>`;
+}
+
+function renderAll(){
+  ensureIncomeProfileV10();
+  renderHome();renderBudget();renderCards();renderReserves();renderAnalytics();renderFerreira();renderCategories();renderBackup();
+}
+
+document.title='A&A Finanças · v10';
+ensureIncomeProfileV10();
+persist();
+renderAll();
+</script>
+<style>
+.income-v10{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0}
+.income-kpi{position:relative;overflow:hidden}
+.income-kpi:after{content:"";position:absolute;inset:auto -30px -55px auto;width:120px;height:120px;border-radius:50%;background:rgba(82,216,232,.08)}
+.income-kpi.extra:after{background:rgba(49,214,155,.09)}
+.income-kpi.total{border-color:rgba(49,214,155,.28)}
+.income-group-title{margin-top:18px;padding:9px 0 5px;color:#9fb0ba;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
+.home-secondary{grid-template-columns:repeat(3,minmax(0,1fr))}
+.patrimony-v10{margin:16px 0;padding:20px;overflow:hidden}
+.pat-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+.pat-head h2{margin:8px 0 5px}
+.pat-total{text-align:right;min-width:190px}.pat-total small,.pat-total span{display:block}.pat-total strong{display:block;font-size:27px;margin:4px 0}
+.pat-chart-scroll{overflow-x:auto;margin:14px -6px 0;padding:0 6px 4px;scrollbar-width:thin}
+.pat-months{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:8px}
+.pat-month{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.065);border-radius:12px;padding:11px}
+.pat-month small,.pat-month span{display:block}.pat-month b{display:block;margin:4px 0 7px;font-size:15px}.pat-month span{font-size:11px;color:#8497a3;margin-top:2px}.pat-month em{color:#31d69b;font-style:normal}
+.reserve-cards-v10{margin-top:14px}
+@media(max-width:720px){
+ .income-v10,.home-secondary{grid-template-columns:1fr}
+ .pat-head{display:block}.pat-total{text-align:left;margin-top:14px}
+ .patrimony-v10{padding:15px}
+ .pat-months{display:flex;overflow-x:auto}.pat-month{min-width:155px}
+}
+</style>
+
+
+<style>
+.demo-switch{position:fixed;right:14px;bottom:82px;z-index:60;display:flex;gap:7px;align-items:center;background:#101c25;border:1px solid rgba(82,216,232,.25);box-shadow:0 12px 35px rgba(0,0,0,.35);padding:8px 10px;border-radius:16px}
+.demo-switch button{border:0;border-radius:10px;padding:9px 11px;font-weight:900;background:#1b2b36;color:#dce9ee}
+.demo-switch button.on{background:#52d8e8;color:#061016}
+.demo-banner{margin:10px 0 14px;padding:11px 14px;border:1px solid rgba(82,216,232,.24);background:rgba(82,216,232,.07);border-radius:13px;font-size:12px;color:#bcd1d9}
+.consultor-fab{position:fixed;right:14px;bottom:22px;z-index:61;border:0;border-radius:16px;padding:13px 16px;font-weight:900;background:linear-gradient(135deg,#31d69b,#52d8e8);color:#061016;box-shadow:0 14px 35px rgba(0,0,0,.4)}
+.ai-demo{display:grid;gap:12px}.ai-box{padding:14px;border-radius:14px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07)}
+.ai-q{display:flex;gap:7px;flex-wrap:wrap}.ai-q button{font-size:12px}
+@media(max-width:720px){.demo-switch{bottom:80px;right:10px}.consultor-fab{bottom:20px;right:10px}}
+</style>
+<script>
+/* ===== A&A v11 — Modo Visitante + Consultor IA (demo seguro) ===== */
+let aaVisitor=false;
+const _fmtReal=fmt;
+const _renderAllReal=renderAll;
+
+const VISITOR={
+  Assis:{fixed:2,extra:1,total:3},
+  Andressa:{fixed:2,extra:1,total:3},
+  Casal:{fixed:4,extra:2,total:6}
+};
+function visitorScopeKey(){return aaScope==='Casal'?'Casal':aaScope}
+function visitorMoney(v){return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v)}
+function maskTextV11(root=document){
+  if(!aaVisitor)return;
+  const replacements=[
+    ['Canyon Salário','Salário principal'],['Canyon Benefícios','Benefícios'],
+    ['Bônus Canyon','Renda extra'],['Ferreira Imóveis','Projeto pessoal'],
+    ['Instituto Salário','Salário principal'],['SUS','Renda complementar'],['Projeto','Projeto pessoal'],
+    ['Apto','Moradia'],['apto','Moradia'],['Apartamento','Moradia']
+  ];
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+  let n; while(n=walker.nextNode()){
+    if(n.parentElement && ['SCRIPT','STYLE'].includes(n.parentElement.tagName))continue;
+    replacements.forEach(([a,b])=>{if(n.nodeValue.includes(a))n.nodeValue=n.nodeValue.split(a).join(b)});
+  }
+}
+function visitorBannerV11(){
+  document.querySelectorAll('.demo-banner').forEach(x=>x.remove());
+  if(!aaVisitor)return;
+  const active=document.querySelector('section.active,.page.active,main')||document.body;
+  const b=document.createElement('div'); b.className='demo-banner';
+  b.innerHTML='<b>Modo Visitante ativo</b> · demonstração com nomes e valores genéricos. Seus dados pessoais continuam preservados no aparelho.';
+  active.prepend(b);
+}
+function renderVisitorOverlayV11(){
+  if(!aaVisitor)return;
+  const r=VISITOR[visitorScopeKey()]||VISITOR.Casal;
+  const cards=[...document.querySelectorAll('.income-v10 .kpi strong')];
+  if(cards[0])cards[0].textContent=visitorMoney(r.fixed);
+  if(cards[1])cards[1].textContent=visitorMoney(r.extra);
+  if(cards[2])cards[2].textContent=visitorMoney(r.total);
+
+  // Mascara todos os valores monetários visíveis sem alterar o banco.
+  document.querySelectorAll('strong,.big,b,.pat-month,td,.amount').forEach((el,i)=>{
+    if(/R\$\s?[\d.]+,\d{2}/.test(el.textContent||'')){
+      const vals=[1,2,3,4,5,6,8,10];
+      el.innerHTML=el.innerHTML.replace(/R\$\s?[\d.]+,\d{2}/g,()=>visitorMoney(vals[i%vals.length]));
+    }
+  });
+  maskTextV11();
+  visitorBannerV11();
+}
+function renderAll(){
+  _renderAllReal();
+  if(aaVisitor)setTimeout(renderVisitorOverlayV11,0);
+}
+function toggleVisitorV11(){
+  aaVisitor=!aaVisitor;
+  document.getElementById('visitorBtn').classList.toggle('on',aaVisitor);
+  document.getElementById('visitorBtn').textContent=aaVisitor?'Visitante ✓':'Modo visitante';
+  renderAll();
+}
+function consultorV11(){
+  const scope=aaVisitor?'casal demonstrativo':(aaScope==='Casal'?'casal':aaScope);
+  modal(`<div class="mh"><div><span class="tag">✦ CONSULTOR IA</span><h2>Consultor A&A</h2><div class="mut">${aaVisitor?'Demonstração segura para visitantes':'Módulo preparado para integração com IA'}</div></div><button class="btn" onclick="closeM()">×</button></div>
+  <div class="ai-demo">
+    <div class="ai-box"><b>Análise de ${scope}</b><p class="mut">${aaVisitor?'O orçamento demonstrativo está equilibrado. A recomendação é acompanhar gastos variáveis, manter uma parcela da renda destinada à reserva e revisar o realizado antes do fechamento do mês.':'O Consultor já está na interface. Para respostas reais e personalizadas, a próxima etapa é conectar o app a um backend seguro e à API da IA; nenhuma chave será colocada neste index público.'}</p></div>
+    <div class="ai-q"><button class="btn soft" onclick="aiDemoAnswerV11('mes')">Analisar meu mês</button><button class="btn soft" onclick="aiDemoAnswerV11('cortes')">Onde posso melhorar?</button><button class="btn soft" onclick="aiDemoAnswerV11('orcamento')">Sugerir orçamento</button></div>
+    <label><b>Pergunte ao consultor</b><input id="aiAskV11" placeholder="Ex.: Como posso melhorar meu orçamento?"></label>
+    <button class="btn primary" onclick="aiDemoAnswerV11('pergunta')">Perguntar</button>
+    <div id="aiAnswerV11" class="ai-box mut">As respostas desta versão são demonstrativas. O módulo não envia seus dados para serviços externos.</div>
+  </div>`);
+}
+function aiDemoAnswerV11(kind){
+  const q=document.getElementById('aiAskV11')?.value||'';
+  const answers={
+    mes:'Seu mês deve ser acompanhado por três pontos: receitas, obrigações e gastos variáveis. O ideal é comparar orçamento e realizado antes de aumentar o Saldo Livre.',
+    cortes:'Priorize revisar categorias variáveis que ultrapassaram o orçamento. Evite reduzir reservas automaticamente para compensar consumo acima do planejado.',
+    orcamento:'Uma boa proposta começa pelas obrigações, define a meta de reserva e distribui o restante entre consumo e Saldo Livre. A versão conectada à IA fará isso usando seus números reais.',
+    pergunta:q?`Pergunta registrada: “${q}”. Na versão conectada, o Consultor responderá usando orçamento, realizado, cartões e patrimônio do A&A.`:'Digite uma pergunta para o Consultor.'
+  };
+  const el=document.getElementById('aiAnswerV11'); if(el)el.textContent=answers[kind];
+}
+function installV11Controls(){
+  if(document.getElementById('visitorBtn'))return;
+  const box=document.createElement('div'); box.className='demo-switch';
+  box.innerHTML='<button id="visitorBtn" onclick="toggleVisitorV11()">Modo visitante</button>';
+  document.body.appendChild(box);
+  const ai=document.createElement('button'); ai.className='consultor-fab'; ai.textContent='✦ Consultor IA'; ai.onclick=consultorV11;
+  document.body.appendChild(ai);
+}
+document.addEventListener('DOMContentLoaded',installV11Controls);
+if(document.readyState!=='loading')installV11Controls();
+document.title='A&A Finanças · v11';
+</script>
+
 <script>if("serviceWorker" in navigator && location.protocol.startsWith("http")){navigator.serviceWorker.register("sw.js").then(r=>r.update()).catch(()=>{});}</script></body></html>
