@@ -627,10 +627,14 @@ function aaProjectionCertainV14(){
   const initial=+(reserve?.value||reserve?.initial||0);
   const rate=+(reserve?.rate||0);
   let certain=initial, projectedContributions=0, totalCertainInterest=0;
-  let keys=Object.keys(db.budget||{}).sort((a,b)=>monthIndex(a)-monthIndex(b)).filter(k=>monthIndex(k)>=monthIndex(mk()));
+  const mons=['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+  const serial=k=>(2000+(+String(k).slice(-2)))*12+mons.indexOf(String(k).slice(0,3));
+  const fromSerial=n=>mons[n%12]+String(Math.floor(n/12)).slice(-2);
+  let keys=Object.keys(db.budget||{}).filter(k=>/^(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\d{2}$/.test(k))
+    .sort((a,b)=>serial(a)-serial(b)).filter(k=>serial(k)>=serial(mk()));
   if(keys.length<6){
-    let last=keys.length?keys[keys.length-1]:mk();
-    while(keys.length<6){last=nextMonth(last);keys.push(last)}
+    let last=keys.length?serial(keys[keys.length-1]):serial(mk())-1;
+    while(keys.length<6){last++;keys.push(fromSerial(last))}
   }
   const rows=keys.map(k=>{
     const interest=certain*(rate/100);
@@ -658,6 +662,125 @@ renderAll=function(){
  installEyeV13();maskValuesV13();
 }
 document.title='A&A Finanças · v14';
+ensureV13();persist();renderAll();
+</script>
+
+
+<style>
+/* ===== A&A v15 · estabilização ===== */
+@media(max-width:650px){
+  .side{overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch}
+  .nav{display:flex!important;grid-template-columns:none!important;width:max-content!important;min-width:100%!important;gap:6px!important;padding:7px!important}
+  .nav button,.nav button:nth-child(n+7){display:flex!important;min-width:76px!important;flex:0 0 auto!important;padding:8px 7px!important}
+  .nav button i{font-size:15px!important}
+  .main{padding-bottom:92px!important}
+}
+.eye-privacy{font-family:Arial,sans-serif}
+.eye-privacy svg{width:23px;height:23px;display:block;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.privacy-hidden-v15 .privacy-number-v15{visibility:hidden;position:relative}
+.privacy-hidden-v15 .privacy-number-v15:after{content:"----";visibility:visible;position:absolute;inset:0;display:flex;align-items:center;justify-content:inherit;color:inherit}
+.finance-official{border-color:rgba(49,214,155,.28)}
+.finance-sim{border-color:rgba(82,216,232,.22)}
+</style>
+<script>
+/* ===== A&A v15 · revisão de estabilidade ===== */
+function inferredIncomeOwner(x){
+  const n=norm(x?.category||'');
+  if(['canyon salario','canyon benefícios','canyon beneficios','bonus canyon','bônus canyon','ferreira imoveis','ferreira imóveis'].some(v=>n.includes(v))) return 'Assis';
+  if(['instituto salario','instituto salário','sus','projeto'].some(v=>n===v||n.includes(v))) return 'Andressa';
+  if(x?.owner==='Assis'||x?.owner==='Andressa') return x.owner;
+  if(n.includes('andressa'))return 'Andressa';
+  if(n.includes('assis'))return 'Assis';
+  return x?.owner||'Casal';
+}
+function surplusFor(owner,k=mk()){
+  return budgetRows(k,'expense')
+    .filter(x=>surplusEligible(x)&&x.owner===owner)
+    .reduce((sum,x)=>{
+      const paid=actualOwned(x.category,'despesa',k,x.owner);
+      const budget=+x.budget||0;
+      // Só libera sobra quando a obrigação foi integralmente liquidada.
+      return sum + (budget>0 && paid>=budget ? Math.max(0,budget-paid) : 0);
+    },0);
+}
+function obligationStatusV15(x,k=mk()){
+  const paid=actualOwned(x.category,'despesa',k,x.owner);
+  const budget=+x.budget||0;
+  if(paid<=0)return 'Pendente';
+  if(budget>0 && paid<budget)return 'Parcial';
+  return 'Liquidada';
+}
+function rule503020(k=mk()){
+  const inc=incomeSummaryV10(aaScope).total;
+  const rows=scopedExpenseRows(k),free=rows.filter(isFreeRow).reduce((a,x)=>a+(+x.budget||0),0);
+  const inv=rows.filter(isReserveRow).reduce((a,x)=>a+(+x.budget||0),0);
+  const desp=Math.max(0,scopedExpense(k)-free-inv);
+  return {inc,items:[['Despesas',.50,desp],['Investimento / Reserva',.30,inv],['Saldo Livre',.20,free]]};
+}
+function renderReserves(){
+  const personal=db.reserves.filter(r=>r.owner==='Casal').reduce((a,r)=>a+rValue(r),0);
+  const p=aaProjectionCertainV14();
+  $('#reserves').innerHTML=`
+    <div class="kpis">
+      <div class="card kpi"><label>Patrimônio financeiro do casal</label><strong>${fmt(personal)}</strong><span class="mut">A&A + objetivos específicos</span></div>
+      <div class="card kpi"><label>A&A hoje</label><strong>${fmt(p.initial)}</strong><span class="mut">Patrimônio existente hoje</span></div>
+      <div class="card kpi"><label>Rendimentos certos projetados</label><strong class="positive">+${fmt(p.totalCertainInterest)}</strong><span class="mut">Calculados somente sobre patrimônio já existente</span></div>
+      <div class="card kpi"><label>Patrimônio certo projetado</label><strong>${fmt(p.finalCertain)}</strong><span class="mut">Sem incorporar aportes futuros</span></div>
+    </div>
+    ${aaProjectionHTML()}
+    <div class="reserve-grid reserve-cards-v10">${db.reserves.map((r,i)=>{
+      const v=rValue(r),goal=+r.goal||0,pct=goal?Math.min(100,v/goal*100):0;
+      return `<div class="card reserve"><span class="tag">${esc(r.owner||'Casal')}</span><h2>${esc(r.name)}</h2><div class="big">${fmt(v)}</div><div class="mut">${(+r.rate||0).toFixed(2).replace('.',',')}% a.m.</div>${goal?`<div class="progress-v13"><i style="width:${pct}%"></i></div><small class="mut">${pct.toFixed(1).replace('.',',')}% da meta ${fmt(goal)}</small>`:''}</div>`;
+    }).join('')}</div>`;
+}
+function privacyIconV15(hidden){
+ return hidden
+ ? `<svg viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 10.7a2 2 0 002.8 2.8"/><path d="M9.9 4.2A10.7 10.7 0 0112 4c5.5 0 9 5 9 5a16 16 0 01-2.1 2.6"/><path d="M6.6 6.6C4.3 8 3 10 3 10s3.5 5 9 5c1 0 1.9-.2 2.7-.4"/></svg>`
+ : `<svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="2.5"/></svg>`;
+}
+function installEyeV13(){
+ document.querySelectorAll('.demo-switch,.consultor-fab').forEach(x=>x.remove());
+ let b=document.getElementById('privacyEyeV13');
+ if(!b){b=document.createElement('button');b.id='privacyEyeV13';b.className='eye-privacy';document.body.appendChild(b)}
+ b.title=privacyV13?'Mostrar valores':'Ocultar valores'; b.setAttribute('aria-label',b.title);
+ b.innerHTML=privacyIconV15(privacyV13);
+ b.onclick=()=>{privacyV13=!privacyV13;renderAll()};
+}
+function maskValuesV13(){
+ document.body.classList.toggle('privacy-hidden-v15',privacyV13);
+ document.querySelectorAll('.privacy-number-v15').forEach(x=>x.classList.remove('privacy-number-v15'));
+ if(!privacyV13)return;
+ const money=/R\$\s*[-+]?\s*[\d.]+,\d{2}/;
+ const numericSelectors=['.kpi strong','.big','.money','.pat-total strong','.pat-total small','.stack-col b','.wallet-flow b','.pct','.rule-card .mut','.finance-card b','.num b'];
+ document.querySelectorAll(numericSelectors.join(',')).forEach(el=>{if(money.test(el.textContent)||/[0-9]+([.,][0-9]+)?%/.test(el.textContent))el.classList.add('privacy-number-v15')});
+ // Replace remaining monetary text nodes that are not covered by value containers.
+ const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);let n,arr=[];
+ while(n=walker.nextNode())arr.push(n);
+ arr.forEach(t=>{if(['SCRIPT','STYLE','TEXTAREA','INPUT'].includes(t.parentElement?.tagName))return;if(money.test(t.nodeValue))t.nodeValue=t.nodeValue.replace(/R\$\s*[-+]?\s*[\d.]+,\d{2}/g,'R$ ----')});
+}
+function renderFinancing(){
+ const f=db.financing||FIN_V13,p=financeProjectionV13(),pct=(f.paid/f.term)*100;
+ const future=p.reduce((a,x)=>a+x.installment,0),interest=p.reduce((a,x)=>a+x.interest,0);
+ $('#financing').innerHTML=`<div class="finance-grid">
+ <div class="card kpi finance-official"><label>Saldo devedor oficial</label><strong>${fmt(f.balance)}</strong><span class="mut">demonstrativo de ${f.generated}</span></div>
+ <div class="card kpi finance-official"><label>Parcelas transcorridas</label><strong>${f.paid} / ${f.term}</strong><span class="mut">${pct.toFixed(1).replace('.',',')}% do prazo</span></div>
+ <div class="card kpi finance-official"><label>Prazo remanescente</label><strong>${f.remaining} meses</strong><span class="mut">taxa nominal ${String(f.rate).replace('.',',')}% a.a.</span></div>
+ <div class="card kpi finance-official"><label>Próxima cobrança oficial</label><strong>${fmt(f.nextValue)}</strong><span class="mut">${f.nextDue}</span></div></div>
+ <div class="grid2"><div class="card finance-card finance-official"><span class="tag">DADOS OFICIAIS</span><h2>Contrato habitacional</h2>
+ <div class="income-row"><span>Sistema</span><b>${f.system}</b></div><div class="income-row"><span>Indexador</span><b>${f.indexer}</b></div>
+ <div class="progress-v13"><i style="width:${pct}%"></i></div><div class="mut">Histórico e próxima cobrança vêm do demonstrativo cadastrado.</div></div>
+ <div class="card finance-card finance-sim"><span class="tag">SIMULAÇÃO</span><h2>Cenário futuro</h2>
+ <div class="income-row"><span>Fluxo estimado</span><b>${fmt(future)}</b></div><div class="income-row"><span>Juros nominais estimados</span><b>${fmt(interest)}</b></div>
+ <div class="mut">Não são parcelas oficiais. O indexador é variável e suas correções futuras não são conhecidas hoje.</div></div></div>
+ <div class="card section" style="margin-top:15px"><h2>Histórico oficial disponível</h2><div class="tablewrap"><table><thead><tr><th>Parcela</th><th>Pagamento</th><th class="money">Pago</th></tr></thead><tbody>${f.recent.map(x=>`<tr><td>${x[1]}</td><td>${x[0]}</td><td class="money">${fmt(x[2])}</td></tr>`).join('')}</tbody></table></div></div>
+ <div class="card section finance-sim" style="margin-top:15px"><span class="tag">SIMULAÇÃO GERENCIAL</span><h2>Projeção futura</h2><div class="tablewrap"><table><thead><tr><th>Nº</th><th>Data</th><th class="money">Parcela estimada</th><th class="money">Amortização</th><th class="money">Juros</th><th class="money">Saldo</th></tr></thead><tbody>${p.map(x=>`<tr><td>${x.n}</td><td>${x.date}</td><td class="money">${fmt(x.installment)}</td><td class="money">${fmt(x.amort)}</td><td class="money">${fmt(x.interest)}</td><td class="money">${fmt(x.balance)}</td></tr>`).join('')}</tbody></table></div></div>`;
+}
+function renderAll(){
+ ensureV13();ensureIncomeProfileV10();
+ renderHome();renderBudget();renderCards();renderReserves();renderAnalytics();renderFinancing();renderFerreira();renderAlerts();renderCategories();renderBackup();
+ installEyeV13();maskValuesV13();
+}
+document.title='A&A Finanças · v15';
 ensureV13();persist();renderAll();
 </script>
 
