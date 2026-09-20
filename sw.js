@@ -1,45 +1,51 @@
-const CACHE='aa-financas-v8-20260920';
-const ASSETS=['./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
+const CACHE='aa-financas-v18-20260920';
+const ASSETS=["./aa-cover.png",'./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 
-self.addEventListener('install',e=>{
+self.addEventListener('install',event=>{
   self.skipWaiting();
-  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));
+  event.waitUntil(
+    caches.open(CACHE).then(cache=>cache.addAll(ASSETS))
+  );
 });
 
-self.addEventListener('activate',e=>{
-  e.waitUntil(Promise.all([
-    self.clients.claim(),
-    caches.keys().then(keys=>Promise.all(
-      keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))
-    ))
-  ]));
+self.addEventListener('activate',event=>{
+  event.waitUntil(
+    Promise.all([
+      self.clients.claim(),
+      caches.keys().then(keys=>Promise.all(
+        keys.filter(key=>key!==CACHE).map(key=>caches.delete(key))
+      ))
+    ])
+  );
 });
 
-self.addEventListener('fetch',e=>{
-  if(e.request.method!=='GET') return;
+self.addEventListener('fetch',event=>{
+  if(event.request.method!=='GET') return;
 
-  if(e.request.mode==='navigate'){
-    e.respondWith(
-      fetch(e.request,{cache:'no-store'})
-        .then(r=>{
-          const copy=r.clone();
-          caches.open(CACHE).then(c=>c.put('./index.html',copy));
-          return r;
+  if(event.request.mode==='navigate'){
+    event.respondWith(
+      fetch(event.request,{cache:'no-store'})
+        .then(response=>{
+          const copy=response.clone();
+          caches.open(CACHE).then(cache=>cache.put('./index.html',copy));
+          return response;
         })
         .catch(()=>caches.match('./index.html'))
     );
     return;
   }
 
-  e.respondWith(
-    caches.match(e.request).then(cached=>
-      cached || fetch(e.request).then(r=>{
-        if(r && r.ok){
-          const copy=r.clone();
-          caches.open(CACHE).then(c=>c.put(e.request,copy));
+  event.respondWith(
+    caches.match(event.request).then(cached=>{
+      const network=fetch(event.request).then(response=>{
+        if(response && response.ok){
+          const copy=response.clone();
+          caches.open(CACHE).then(cache=>cache.put(event.request,copy));
         }
-        return r;
-      })
-    )
+        return response;
+      }).catch(()=>cached);
+
+      return cached || network;
+    })
   );
 });
