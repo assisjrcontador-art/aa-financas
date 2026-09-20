@@ -1836,4 +1836,69 @@ body{padding-bottom:calc(76px + env(safe-area-inset-bottom))!important}
 })();
 </script>
 
+
+<style id="aa-opening-privacy-fix">
+/* Durante capa, seleção do aparelho e boas-vindas, a navegação do app não existe visualmente. */
+body.aa-opening #nav,
+body.aa-opening #privacyEyeV13{
+  display:none!important;
+  visibility:hidden!important;
+  pointer-events:none!important;
+}
+</style>
+<script id="aa-opening-privacy-fix-js">
+(function(){
+  /* PRIVACIDADE PADRÃO:
+     toda nova abertura começa com olho fechado e valores suprimidos.
+     Não persiste "olho aberto" entre sessões. */
+  if(typeof privacyV13!=='undefined'){
+    privacyV13=true;
+    if(typeof installEyeV13==='function')installEyeV13();
+    if(typeof maskValuesV13==='function')maskValuesV13();
+  }
+
+  /* A barra inferior e o olho só aparecem quando a experiência de abertura terminou. */
+  function openingActive(){
+    const splash=document.getElementById('aaSplash');
+    const welcome=document.getElementById('aaWelcome');
+    const who=document.getElementById('aaWhoUses');
+
+    const splashOn=!!splash &&
+      getComputedStyle(splash).display!=='none' &&
+      !splash.classList.contains('aa-leave');
+
+    const welcomeOn=!!welcome &&
+      (welcome.classList.contains('show') ||
+       (getComputedStyle(welcome).display!=='none' && getComputedStyle(welcome).visibility!=='hidden'));
+
+    const whoOn=!!who && who.classList.contains('show');
+    return splashOn||welcomeOn||whoOn;
+  }
+
+  function syncOpeningUI(){
+    document.body.classList.toggle('aa-opening',openingActive());
+  }
+
+  /* começa escondido antes de qualquer transição */
+  document.body.classList.add('aa-opening');
+
+  const watched=['aaSplash','aaWelcome','aaWhoUses']
+    .map(id=>document.getElementById(id)).filter(Boolean);
+
+  const obs=new MutationObserver(syncOpeningUI);
+  watched.forEach(el=>obs.observe(el,{attributes:true,attributeFilter:['class','style','aria-hidden']}));
+
+  /* timers de segurança acompanham as transições já existentes */
+  [0,100,500,800,1800,2500,3200].forEach(ms=>setTimeout(syncOpeningUI,ms));
+
+  /* Garante novamente a máscara depois do primeiro render completo. */
+  setTimeout(()=>{
+    if(typeof privacyV13!=='undefined')privacyV13=true;
+    if(typeof installEyeV13==='function')installEyeV13();
+    if(typeof maskValuesV13==='function')maskValuesV13();
+    syncOpeningUI();
+  },50);
+})();
+</script>
+
 </body></html>
